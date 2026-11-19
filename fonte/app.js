@@ -156,8 +156,9 @@ function normaliza() {
   for (const k of ['professores', 'turmas', 'disciplinas', 'atribs']) S[k] = S[k] || [];
   S.grade = S.grade || {}; S.fixas = S.fixas || {};
   S.professores.forEach(p => p.indisp = p.indisp || []);
+  S.config.regras = S.config.regras || [];
 }
-function recalc() { M = Modelo(S); PROBS = validar(S); const n = PROBS.filter(p => p.grav >= 2).length; const b = $('nConf'); b.hidden = !n; b.textContent = n; $('escNome').textContent = S.config.escola || 'Gestão escolar'; }
+function recalc() { M = Modelo(S); PROBS = validar(S); const n = PROBS.filter(p => p.grav >= 2).length; const b = $('nConf'); b.hidden = !n; b.textContent = n; const np = PROBS.filter(p => p.tipo === 'regra').length, bp = $('nPed'); bp.hidden = !np; bp.textContent = np; $('escNome').textContent = S.config.escola || 'Gestão escolar'; }
 function mudou(...ks) { recalc(); P.mark(...ks); }
 function snap() { UI.undo.push(JSON.stringify({ grade: S.grade, fixas: S.fixas })); if (UI.undo.length > 40) UI.undo.shift(); }
 function desfazer() { const s = UI.undo.pop(); if (!s) return toast('Nada para desfazer.'); const o = JSON.parse(s); S.grade = o.grade; S.fixas = o.fixas; mudou('grade'); render(); toast('Desfeito.'); }
@@ -645,6 +646,7 @@ ACT.gerar = () => {
    <label class="row"><input type="radio" name="gm" value="novo" ${temAulas ? '' : 'checked'}> Montar do zero${nFix ? ` (mantendo as ${nFix} aulas fixadas 📌)` : ''}</label>
    <label class="row"><input type="radio" name="gm" value="completar" ${temAulas ? 'checked' : ''}> Completar a grade atual (mantém as aulas já colocadas)</label>
    <label class="f">Tempo de busca<select id="gTempo"><option value="4000">Rápido (4 s)</option><option value="10000" selected>Normal (10 s)</option><option value="25000">Caprichado (25 s)</option></select></label>
+   ${S.config.regras.filter(r => r.ativo !== false).length ? `<p class="hint" style="margin:0">Vai respeitar ${S.config.regras.filter(r => r.ativo !== false).length} pedido(s) de professores. <a href="#pedidos" data-x>Ver pedidos</a></p>` : `<p class="hint" style="margin:0">Tem pedidos de professores (ex.: “4 aulas seguidas na segunda”)? <a href="#pedidos" data-x>Cadastre antes de gerar</a>.</p>`}
   </div><div id="gProg" hidden><div class="prog"><i id="gBar" style="width:0"></i></div><p class="hint" id="gTxt">Preparando…</p></div>
   <div class="row" style="justify-content:flex-end" id="gBtns"><button class="btn" data-x>Cancelar</button><button class="btn acc" data-act="gerarOk">Gerar</button></div>`);
 };
@@ -657,13 +659,68 @@ ACT.gerarOk = async () => {
   const tot = S.atribs.filter(a => a.prof).reduce((s, a) => s + a.aulas, 0), falt = r.naoAlocadas.reduce((s, x) => s + x.qtd, 0);
   modal(`<h2>${falt ? `Horário gerado com ${falt} aula(s) sem lugar` : 'Horário gerado sem pendências'}</h2><p>${tot - falt} de ${tot} aulas distribuídas em ${r.tentativas} combinações testadas.${S.atribs.some(a => !a.prof) ? ' Aulas sem professor definido ficam de fora até você definir o professor.' : ''}</p>
   ${falt ? `<div class="opts" style="margin:10px 0">${r.naoAlocadas.map(n => { const a = M.atr[n.atr]; return `<div class="opt" style="cursor:default"><span class="dot" style="background:${M.disc[a.disc]?.cor}"></span><span><b>${E(M.disc[a.disc]?.nome)} — ${E(M.turma[a.turma]?.nome)} (${n.qtd})</b><small>${E(n.motivo)}</small></span></div>`; }).join('')}</div>` : ''}
+  ${(() => { const rs = Regras.checar(S); if (!rs.length) return ''; const nao = rs.filter(r => !r.ok); return `<p style="margin:10px 0 4px"><b>Pedidos dos professores:</b> ${rs.length - nao.length} de ${rs.length} atendidos.</p>${nao.map(r => `<p class="hint" style="margin:2px 0;color:var(--bad)">✕ ${E(r.txt)} — ${E(r.det)}</p>`).join('')}`; })()}
   <div class="row" style="justify-content:flex-end"><button class="btn" data-act="verValid">Ver validação</button><button class="btn pri" data-x>Ver grade</button></div>`);
   location.hash = '#grade'; render();
 };
 ACT.verValid = () => { fecha(); location.hash = '#validacao'; };
 
+/* ---------------- PEDIDOS DOS PROFESSORES ---------------- */
+VIEWS.pedidos = () => {
+  const st = Object.fromEntries(Regras.checar(S).map(r => [r.id, r])), temGrade = Object.values(S.grade).some(g => Object.keys(g).length);
+  const regras = S.config.regras;
+  const pend = UI.pedidos || [];
+  return `<div class="top"><div><h1>Pedidos dos professores</h1><p>Escreva os pedidos do jeito que você falaria. O sistema interpreta, você confere e o gerador respeita na próxima vez que gerar o horário.</p></div>${regras.length ? '<button class="btn acc" data-act="gerar">Gerar horário com os pedidos</button>' : ''}</div>
+  <div class="card"><label class="f" for="pedTxt">Escreva um pedido por linha</label>
+  <textarea id="pedTxt" style="min-height:110px;margin-top:6px" placeholder="Professor Adalermo quer 4 aulas seguidas na segunda&#10;Jaqueline só pode dar aula na terça, quarta e quinta&#10;A professora Leda não pode na sexta&#10;Henrique no máximo 6 aulas por dia&#10;Maria Cristina quer 2 aulas na quarta">${E(UI.pedTxt || '')}</textarea>
+  <div class="row" style="margin-top:10px"><button class="btn pri" data-act="interpretar">Interpretar</button><span class="hint">Entendo: aulas seguidas num dia, mínimo de aulas num dia, só em certos dias, não em certos dias e máximo de aulas por dia.</span></div></div>
+  ${pend.length ? `<div class="card" style="margin-top:14px"><div class="row"><h2>Confira como entendi</h2><span class="sp"></span><button class="btn" data-act="pedDescarta">Descartar</button><button class="btn acc" data-act="pedConfirma">Adicionar ${pend.length} pedido${pend.length > 1 ? 's' : ''}</button></div>
+    <div class="grid" style="margin-top:10px">${pend.map((r, i) => editorRegra(r, i)).join('')}</div></div>` : ''}
+  <div class="card" style="margin-top:14px;padding:0"><div class="row" style="padding:14px 16px"><h2>Pedidos cadastrados</h2><span class="tag">${regras.length}</span></div>
+  ${regras.length ? `<div class="tbl" style="border:0;border-radius:0"><table class="stack"><thead><tr><th>Pedido</th><th>Como o sistema aplica</th><th>Situação na grade</th><th></th></tr></thead><tbody>${regras.map(r => { const s = st[r.id]; return `<tr><td class="muted" style="max-width:280px">${E(r.texto || '—')}</td><td><b>${E(Regras.descreve(r, S))}</b></td><td>${r.ativo === false ? '<span class="tag">desligado</span>' : !temGrade ? '<span class="tag">aguardando gerar</span>' : s ? (s.ok ? `<span class="tag ok">atendido</span>` : `<span class="tag bad">não atendido</span>`) + ` <span class="hint">${E(s.det)}</span>` : ''}</td>
+    <td class="row" style="flex-wrap:nowrap"><button class="btn sm" data-act="pedLiga" data-id="${r.id}">${r.ativo === false ? 'Ligar' : 'Desligar'}</button><button class="btn sm ghost danger" data-act="pedDel" data-id="${r.id}">Excluir</button></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="empty">Nenhum pedido ainda.</p>'}</div>`;
+};
+function editorRegra(r, i) {
+  const D = S.config.dias, um = r.tipo === 'seq' || r.tipo === 'min';
+  return `<div class="card" style="background:var(--panel2)"><p class="hint" style="margin:0 0 8px">“${E(r.texto)}”</p>${(r.avisos || []).map(x => `<p style="color:var(--warn);margin:0 0 6px;font-size:13px">⚠ ${E(x)}</p>`).join('')}
+  <div class="row"><select data-pe="prof" data-i="${i}" aria-label="Professor" style="max-width:280px"><option value="">— professor —</option>${S.professores.map(p => `<option value="${p.id}" ${p.id === r.prof ? 'selected' : ''}>${E(p.nome)}</option>`).join('')}</select>
+  <select data-pe="tipo" data-i="${i}" aria-label="Tipo"><option value="">— tipo de pedido —</option>${Object.entries(Regras.TIPOS).map(([k, v]) => `<option value="${k}" ${k === r.tipo ? 'selected' : ''}>${v}</option>`).join('')}</select>
+  ${r.tipo === 'seq' || r.tipo === 'min' || r.tipo === 'max' ? `<label class="row" style="gap:6px">Aulas <input type="number" min="1" max="10" data-pe="n" data-i="${i}" value="${r.n || ''}"></label>` : ''}
+  ${r.tipo && r.tipo !== 'max' ? (um ? `<select data-pe="dia" data-i="${i}" aria-label="Dia"><option value="">— dia —</option>${D.map((d, k) => `<option value="${k}" ${r.dias[0] === k ? 'selected' : ''}>${d}</option>`).join('')}</select>` : `<span class="row" style="gap:8px">${D.map((d, k) => `<label class="row" style="gap:3px"><input type="checkbox" data-pe="dias" data-i="${i}" value="${k}" ${r.dias.includes(k) ? 'checked' : ''}>${d.slice(0, 3)}</label>`).join('')}</span>`) : ''}
+  <span class="sp"></span><button class="btn sm ghost" data-act="pedTira" data-i="${i}">Remover</button></div>
+  <p style="margin:8px 0 0"><b>${r.prof && r.tipo ? E(Regras.descreve(r, S)) : '<span class="muted">Complete o professor e o tipo.</span>'}</b></p></div>`;
+}
+VIEWS.pedidos.after = () => {
+  const ta = $('pedTxt'); ta.oninput = () => UI.pedTxt = ta.value;
+  $('main').querySelectorAll('[data-pe]').forEach(el => el.onchange = () => {
+    const r = UI.pedidos[+el.dataset.i], k = el.dataset.pe;
+    if (k === 'prof') r.prof = el.value; else if (k === 'tipo') { r.tipo = el.value; if ((r.tipo === 'seq' || r.tipo === 'min') && r.dias.length > 1) r.dias = r.dias.slice(0, 1); if (r.tipo === 'min' && !r.n) r.n = 1; }
+    else if (k === 'n') r.n = Math.max(1, +el.value || 1); else if (k === 'dia') r.dias = el.value === '' ? [] : [+el.value];
+    else if (k === 'dias') r.dias = [...$('main').querySelectorAll(`[data-pe=dias][data-i="${el.dataset.i}"]:checked`)].map(x => +x.value);
+    r.avisos = []; render();
+  });
+};
+ACT.interpretar = () => {
+  const linhas = ($('pedTxt').value || '').split('\n').map(x => x.trim()).filter(Boolean);
+  if (!linhas.length) return toast('Escreva pelo menos um pedido.');
+  if (!S.professores.length) return toast('Importe o quadro de distribuição antes.');
+  UI.pedidos = (UI.pedidos || []).concat(linhas.flatMap(l => { const r = Regras.interpretar(l, S); return r.regras.map(x => ({ ...x, avisos: r.avisos })); }));
+  UI.pedTxt = ''; render();
+};
+ACT.pedTira = d => { UI.pedidos.splice(+d.i, 1); render(); };
+ACT.pedDescarta = () => { UI.pedidos = []; render(); };
+ACT.pedConfirma = () => {
+  const ok = [], ruins = [];
+  for (const r of UI.pedidos) { const comp = r.prof && r.tipo && (r.tipo === 'max' ? r.n > 0 : r.dias.length && ((r.tipo !== 'seq' && r.tipo !== 'min') || r.n > 0)) && !(r.tipo === 'seq' && r.n < 2); (comp ? ok : ruins).push(r); }
+  if (ruins.length) return toast(`Complete ${ruins.length} pedido(s): professor, tipo, dia e quantidade.`, 4000);
+  for (const r of ok) S.config.regras.push({ id: U.uid('r'), prof: r.prof, tipo: r.tipo, dias: r.dias, n: r.n || null, texto: r.texto, ativo: true });
+  UI.pedidos = []; mudou('config'); render(); toast(`${ok.length} pedido(s) adicionado(s). Gere o horário para aplicar.`, 4000);
+};
+ACT.pedLiga = d => { const r = S.config.regras.find(x => x.id === d.id); r.ativo = r.ativo === false; mudou('config'); render(); };
+ACT.pedDel = d => confirma('Excluir este pedido?', () => { S.config.regras = S.config.regras.filter(x => x.id !== d.id); mudou('config'); render(); }, 'Excluir', true);
+
 /* ---------------- VALIDAÇÃO ---------------- */
-const TIPOS = { choque: ['Professor em duas turmas no mesmo horário', 3], turma2: ['Turma com dois professores no mesmo horário', 3], indisp: ['Aula em horário indisponível do professor', 2], capacidade: ['Turma com mais aulas que horários', 3], falta: ['Aulas faltantes na grade', 1], excesso: ['Disciplina com aulas a mais', 2], carga: ['Carga horária acima ou abaixo do previsto', 1], semprof: ['Aulas sem professor definido', 1], fora: ['Aula fora do horário da turma', 2], orfa: ['Aula sem atribuição', 2] };
+const TIPOS = { regra: ['Pedidos de professores não atendidos', 2], choque: ['Professor em duas turmas no mesmo horário', 3], turma2: ['Turma com dois professores no mesmo horário', 3], indisp: ['Aula em horário indisponível do professor', 2], capacidade: ['Turma com mais aulas que horários', 3], falta: ['Aulas faltantes na grade', 1], excesso: ['Disciplina com aulas a mais', 2], carga: ['Carga horária acima ou abaixo do previsto', 1], semprof: ['Aulas sem professor definido', 1], fora: ['Aula fora do horário da turma', 2], orfa: ['Aula sem atribuição', 2] };
 VIEWS.validacao = () => {
   const cor = g => g >= 3 ? 'var(--bad)' : g === 2 ? 'var(--warn)' : 'var(--muted)';
   const grupos = Object.entries(TIPOS).map(([k, [n, g]]) => ({ k, n, g, itens: PROBS.filter(p => p.tipo === k) }));

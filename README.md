@@ -9,8 +9,9 @@ Sistema para montar o horário das aulas da escola: importa o quadro de distribu
 2. **Importar quadro**: envie a planilha do quadro de distribuição (.xlsx ou .xlsm), confira e confirme.
 3. **Configurações**: ajuste os horários de início das aulas de cada turno.
 4. **Gerar horário automaticamente**.
-5. **Grade de horários**: ajuste arrastando as aulas; a **Validação** mostra os conflitos.
-6. **Relatórios**: quadro geral, horário por turma, por professor, carga horária, distribuição por disciplina e aulas pendentes, em PDF ou Excel.
+5. **Pedidos dos professores** (opcional): escreva pedidos como "Professor X quer 4 aulas seguidas na segunda"; o gerador respeita.
+6. **Grade de horários**: ajuste arrastando as aulas; a **Validação** mostra os conflitos.
+7. **Relatórios**: quadro geral, horário por turma, por professor, carga horária, distribuição por disciplina e aulas pendentes, em PDF ou Excel.
 
 ## Acesso
 - Os dados ficam no Supabase (tabelas `quadro_*`) e são os mesmos para todos os usuários, em qualquer computador ou celular.
