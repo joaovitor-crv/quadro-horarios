@@ -23,6 +23,7 @@ const U = {
     if (alt && !usadas.includes(alt)) return alt;
     let i = 2; while (usadas.includes(s + i)) i++; return s + i;
   },
+  ehAC: nome => /^ativ(idade)?s?\.?\s*(compl|comp)/.test(U.norm(nome)),
   palette: ['#2f6fdb', '#e0573f', '#1f9e7a', '#a259d9', '#e39b1b', '#d6457f', '#2aa0b8', '#6b8e23', '#c0601f', '#5b6bd6', '#b8426b', '#3f8f5a', '#8a6d3b', '#4f9fd8', '#d9734a', '#7c5cc4', '#239c9c', '#b0882b', '#c94c4c', '#56799e'],
   primeiroNome(n) { const p = String(n).trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1] : p[0]; }
 };
@@ -263,7 +264,7 @@ const Importer = {
     }
     // turmas usadas
     const turmas = cols.map(k => {
-      const serie = k.serie.replace(/\s*ANO\s*$/i, '').trim(), soma = discs.reduce((s, d) => s + (d.qt[k.c] || 0), 0);
+      const serie = k.serie.replace(/\s*ANO\s*$/i, '').trim(), soma = discs.reduce((s, d) => s + (U.ehAC(d.nome) ? 0 : (d.qt[k.c] || 0)), 0);
       const temProf = linhasProf.some(p => p.marks[k.c]);
       let nome = (serie ? serie + ' ' : '') + (/eja/i.test(k.nivel + k.modal + k.label) ? '' : (/fund/i.test(k.nivel) ? 'Ano ' : 'EM ')) + k.label.replace(/^(EF AF|EM)\s*/i, '').replace(/\bINT\.?\s*/i, 'Integral ').replace(/\bREG\.?\s*/i, 'Regular ').replace(/\bTec\b/i, 'Téc.').replace(/\s+/g, ' ');
       if (/fund/i.test(k.nivel) || /^EF/i.test(k.label)) nome = (serie || '') + ' Ano';
@@ -309,8 +310,9 @@ const Importer = {
     });
     const dMap = {}; let ci = 0;
     const discUsada = new Set(prop.atr.filter(a => tMap[a.col] && a.aulas > 0).map(a => a.discKey).concat(prop.semProf.filter(s => tMap[s.col]).map(s => s.discKey)));
+    const semAC = !cfg || cfg.acFora !== false;
     for (const d of prop.discs) {
-      if (!discUsada.has(d.key)) continue;
+      if (!discUsada.has(d.key) || (semAC && U.ehAC(d.nome))) continue;
       const ex = st.disciplinas.find(x => U.norm(x.nome) === U.norm(d.nome));
       if (ex) { dMap[d.key] = ex.id; continue; }
       const id = 'd' + d.key; dMap[d.key] = id;
@@ -326,11 +328,14 @@ const Importer = {
       if (!pMap[k]) { const id = 'p' + (++pi); pMap[k] = id; st.professores.push({ id, nome: a.prof, masp: a.masp || '', cor: U.palette[(pi * 7) % U.palette.length], carga: null, indisp: [], obs: '' }); }
       else { const p = st.professores.find(x => x.id === pMap[k]); if (a.prof.length > p.nome.length) p.nome = a.prof; }
       const pid = pMap[k], did = dMap[a.discKey], tid = tMap[a.col];
+      if (!did) continue;
       const ex = st.atribs.find(x => x.disc === did && x.turma === tid && x.prof === pid);
       if (ex) ex.aulas += a.aulas; else st.atribs.push({ id: U.uid('a'), disc: did, turma: tid, prof: pid, aulas: a.aulas, marca: a.marca === 'X' ? '' : a.marca });
     }
-    for (const s of prop.semProf) { if (!tMap[s.col]) continue; st.atribs.push({ id: U.uid('a'), disc: dMap[s.discKey], turma: tMap[s.col], prof: '', aulas: s.aulas, marca: '' }); }
+    for (const s of prop.semProf) { if (!tMap[s.col] || !dMap[s.discKey]) continue; st.atribs.push({ id: U.uid('a'), disc: dMap[s.discKey], turma: tMap[s.col], prof: '', aulas: s.aulas, marca: '' }); }
+    st.professores = st.professores.filter(p => st.atribs.some(a => a.prof === p.id));
     for (const p of st.professores) p.carga = st.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0);
+    st.config.acFora = semAC;
     st.professores.sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
     return st;
   },
@@ -372,7 +377,7 @@ const Store = {
         turnos: {
           M: { nome: 'Matutino', horarios: ['06:55', '07:45', '08:35', '09:45', '10:33', '11:21', '13:10'], intervalos: [{ ini: '09:25', fim: '09:45', nome: 'Recreio' }, { ini: '12:10', fim: '13:10', nome: 'Almoço (EMTI)' }] },
           V: { nome: 'Vespertino', horarios: ['13:10', '14:00', '14:50', '15:55', '16:45'], intervalos: [{ ini: '15:40', fim: '15:55', nome: 'Recreio' }] },
-          N: { nome: 'Noturno', horarios: ['19:00', '19:33', '20:07', '21:00', '21:33', '22:07'], intervalos: [{ ini: '20:40', fim: '21:00', nome: 'Recreio' }] }
+          N: { nome: 'Noturno', horarios: ['19:00', '19:50', '21:00', '21:50'], intervalos: [{ ini: '20:40', fim: '21:00', nome: 'Recreio' }] }
         },
         prefs: { maxMesmaDiscDia: 2, permitirDupla: true }
       },
@@ -505,7 +510,8 @@ function validar(st) {
   if (Object.keys(ocup).length) for (const r of Regras.checar(st)) if (!r.ok) { const rg = M.regras.find(x => x.id === r.id); probs.push({ tipo: 'regra', grav: 2, msg: `Pedido não atendido — ${r.txt} (${r.det})`, prof: rg && rg.prof, regra: r.id }); }
   for (const t of st.turmas) {
     const dem = st.atribs.filter(a => a.turma === t.id).reduce((s, a) => s + a.aulas, 0), cap = t.aulasDia * M.diasT(t);
-    if (dem > cap) probs.push({ tipo: 'capacidade', grav: 3, msg: `${t.nome}: ${dem} aulas previstas para ${cap} horários (${t.aulasDia} por dia) — aumente as aulas por dia`, turma: t.id });
+    const demP = st.atribs.filter(a => a.turma === t.id && a.prof).reduce((s, a) => s + a.aulas, 0);
+    if (dem > cap) probs.push(demP <= cap ? { tipo: 'capacidade', grav: 1, msg: `${t.nome}: ${dem} aulas previstas para ${cap} horários — as ${dem - demP} aula(s) sem professor não cabem na grade`, turma: t.id } : { tipo: 'capacidade', grav: 3, msg: `${t.nome}: ${dem} aulas previstas para ${cap} horários (${t.aulasDia} por dia) — aumente as aulas por dia`, turma: t.id });
   }
   return probs;
 }
@@ -522,7 +528,7 @@ const Gerador = {
     for (const t of T) {
       base[t.id] = {};
       const g = st.grade[t.id] || {};
-      for (const [k, aid] of Object.entries(g)) if (M.atr[aid] && (opt.manterTudo || (opt.manterFixas && st.fixas[t.id + '|' + k]))) base[t.id][k] = aid;
+      for (const [k, aid] of Object.entries(g)) { const [d0, a0] = k.split('-').map(Number); if (a0 >= t.aulasDia || d0 >= M.diasT(t)) continue; if (M.atr[aid] && (opt.manterTudo || (opt.manterFixas && st.fixas[t.id + '|' + k]))) base[t.id][k] = aid; }
     }
     const jaTem = {}; for (const t of T) for (const aid of Object.values(base[t.id])) jaTem[aid] = (jaTem[aid] || 0) + 1;
     const unidades = [];

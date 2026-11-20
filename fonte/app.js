@@ -157,6 +157,23 @@ function normaliza() {
   S.grade = S.grade || {}; S.fixas = S.fixas || {};
   S.professores.forEach(p => p.indisp = p.indisp || []);
   S.config.regras = S.config.regras || [];
+  // atividades complementares não entram na grade (pedido da escola): remove uma vez dos dados já importados
+  if (S.config.acFora === undefined) {
+    S.config.acFora = true;
+    const acs = new Set(S.disciplinas.filter(d => U.ehAC(d.nome)).map(d => d.id));
+    if (acs.size) {
+      const antes = {}; S.professores.forEach(p => antes[p.id] = S.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0));
+      S.atribs = S.atribs.filter(a => !acs.has(a.disc)); S.disciplinas = S.disciplinas.filter(d => !acs.has(d.id));
+      S.professores.forEach(p => { const novo = S.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0); if (p.carga == null || p.carga === antes[p.id]) p.carga = novo; });
+      for (const t of S.turmas) { const dem = S.atribs.filter(a => a.turma === t.id).reduce((s, a) => s + a.aulas, 0), max = S.config.turnos[t.turno]?.horarios.length || t.aulasDia, dias = Math.min(t.dias || S.config.dias.length, S.config.dias.length); t.aulasDia = Math.max(1, Math.min(max, Math.ceil(dem / dias))); }
+      UI.migrou = acs.size;
+    }
+  }
+  const ids = new Set(S.atribs.map(a => a.id));
+  for (const [tid, g] of Object.entries(S.grade)) for (const [k, v] of Object.entries(g)) if (!ids.has(v)) { delete g[k]; delete S.fixas[tid + '|' + k]; }
+  for (const t of S.turmas) { const max = S.config.turnos[t.turno]?.horarios.length; if (max && t.aulasDia > max) t.aulasDia = max; }
+  // aulas que ficaram fora do horário da turma (após reduzir aulas por dia) voltam para "a distribuir"
+  if (UI.migrou) for (const t of S.turmas) { const g = S.grade[t.id] || {}, nd = Math.min(t.dias || S.config.dias.length, S.config.dias.length); for (const k of Object.keys(g)) { const [d, x] = k.split('-').map(Number); if (x >= t.aulasDia || d >= nd) { delete g[k]; delete S.fixas[t.id + '|' + k]; } } }
 }
 function recalc() { M = Modelo(S); PROBS = validar(S); const n = PROBS.filter(p => p.grav >= 2).length; const b = $('nConf'); b.hidden = !n; b.textContent = n; const np = PROBS.filter(p => p.tipo === 'regra').length, bp = $('nPed'); bp.hidden = !np; bp.textContent = np; $('escNome').textContent = S.config.escola || 'Gestão escolar'; }
 function mudou(...ks) { recalc(); P.mark(...ks); }
@@ -268,6 +285,7 @@ VIEWS.importar = () => {
   return topo + `<div class="card" style="margin-top:14px"><div class="row"><div><h2>Conferência: ${E(im.nome)}</h2><p class="hint">${im.aba ? 'Aba “' + E(im.aba) + '” · ' : ''}${inc.length} turmas, ${profs} professores, ${nAtr} marcações, ${pr.dups.length} duplicidades para resolver</p></div><span class="sp"></span>
     ${im.abas && im.abas.length > 1 ? `<label class="f">Aba da planilha<select id="impAba">${im.abas.map(a => `<option ${a === im.aba ? 'selected' : ''}>${E(a)}</option>`).join('')}</select></label>` : ''}
     <button class="btn" data-act="cancelaImp">Cancelar</button><button class="btn acc" data-act="confirmaImp">Confirmar importação</button></div>
+    ${(() => { const n = pr.discs.filter(d => U.ehAC(d.nome) && d.total > 0).length; return n && S.config.acFora !== false ? `<p class="hint" style="margin-top:8px">${n} atividades complementares ficam fora da grade (não entram no quadro de horários).</p>` : ''; })()}
     <p class="hint" style="margin-top:8px">Ao confirmar, os cadastros atuais e a grade são substituídos pelos dados conferidos abaixo. As configurações de horários são mantidas.</p></div>
   <div class="card" style="margin-top:14px"><h2>Turmas identificadas</h2><div class="tbl" style="margin-top:10px"><table class="stack"><thead><tr><th>Incluir</th><th>Nome da turma</th><th>Turno</th><th class="num">Aulas na semana</th><th>Aulas por dia</th><th>Observação</th></tr></thead><tbody>
     ${pr.turmas.map((t, i) => `<tr><td><input type="checkbox" data-imp="incluir" data-i="${i}" ${t.incluir ? 'checked' : ''} aria-label="Incluir turma"></td><td><input type="text" data-imp="nome" data-i="${i}" value="${E(t.nome)}" style="width:100%"></td>
@@ -852,6 +870,7 @@ VIEWS.ajustes = () => {
    <p class="hint">Turmas com menos aulas por dia usam só os primeiros horários do turno (ex.: regular com 6 aulas termina antes do almoço; EMTI com 7 usa também a aula das 13:10).</p></div>
   <div class="card grid"><h2>Preferências do gerador</h2>
    <label class="f">Máximo de aulas da mesma disciplina no mesmo dia<input type="number" id="cMax" min="1" max="6" value="${c.prefs.maxMesmaDiscDia}"></label>
+   <label class="row"><input type="checkbox" id="cAC" ${c.acFora !== false ? 'checked' : ''}> Atividades complementares ficam fora da grade (vale para as próximas importações)</label>
    <label class="row"><input type="checkbox" id="cDupla" ${c.prefs.permitirDupla !== false ? 'checked' : ''}> Permitir aula dupla (duas seguidas da mesma disciplina)</label>
    <p class="hint">Regras obrigatórias (sempre respeitadas): professor em uma turma por vez, disponibilidade do professor, quantidade de aulas de cada disciplina, aulas por dia da turma. As preferências acima e “evitar janelas” entram como penalidade.</p></div>
   ${WEB ? `<div class="card grid"><h2>Minha senha</h2><p class="hint">Conectado como <b>${E(Auth.eu?.nome)}</b> (${E(Auth.eu?.usuario)}).</p><div class="row"><button class="btn" data-act="minhaSenha">Trocar minha senha</button></div></div>` : ''}
@@ -900,7 +919,7 @@ ACT.salvaCfg = () => {
   c.escola = $('cEsc').value.trim() || c.escola; c.ano = +$('cAno').value || c.ano; c.dias = dias;
   for (const [k, hs] of Object.entries(tur)) c.turnos[k].horarios = hs;
   for (const el of document.querySelectorAll('.cInt')) { const ivs = []; for (const part of el.value.split(';').map(x => x.trim()).filter(Boolean)) { const m = /^(\d{1,2}[:h]\d{2})\s*[-–a]+\s*(\d{1,2}[:h]\d{2})\s*(.*)$/i.exec(part); if (!m) return toast(`Intervalo inválido: “${part}”. Use o formato 09:25-09:45 Recreio.`); const f = h => h.replace('h', ':').padStart(5, '0'); ivs.push({ ini: f(m[1]), fim: f(m[2]), nome: m[3].trim() || 'Intervalo' }); } c.turnos[el.dataset.k].intervalos = ivs; }
-  c.prefs.maxMesmaDiscDia = Math.max(1, +$('cMax').value || 2); c.prefs.permitirDupla = $('cDupla').checked;
+  c.prefs.maxMesmaDiscDia = Math.max(1, +$('cMax').value || 2); c.prefs.permitirDupla = $('cDupla').checked; c.acFora = $('cAC').checked;
   S.turmas.forEach(t => { const max = c.turnos[t.turno]?.horarios.length || t.aulasDia; if (t.aulasDia > max) t.aulasDia = max; });
   mudou('config', 'turmas'); render(); toast('Configurações salvas.');
 };
@@ -908,5 +927,5 @@ ACT.apagaTudo = () => confirma('Apagar professores, turmas, disciplinas, atribui
 
 /* ---------------- início ---------------- */
 if (window.__TEST) window.__T = { gerarPDF, gerarXLS, relDados, get S() { return S; } };
-(async () => { await P.load(); recalc(); render(); })();
+(async () => { await P.load(); recalc(); render(); if (UI.migrou) { P.mark(...DOCS); toast(`As atividades complementares (${UI.migrou} disciplinas) saíram da grade. Gere o horário de novo.`, 7000); } })();
 }
