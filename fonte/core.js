@@ -370,9 +370,9 @@ const Store = {
         escola: 'Escola Estadual Sérgio de Freitas Pacheco', ano: 2026,
         dias: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'],
         turnos: {
-          M: { nome: 'Matutino', horarios: ['07:00', '07:50', '08:40', '09:50', '10:40', '11:30', '12:20'] },
-          V: { nome: 'Vespertino', horarios: ['13:00', '13:50', '14:40', '15:50', '16:40', '17:30'] },
-          N: { nome: 'Noturno', horarios: ['19:00', '19:45', '20:30', '21:25', '22:10', '22:55'] }
+          M: { nome: 'Matutino', horarios: ['06:55', '07:45', '08:35', '09:45', '10:33', '11:21', '13:10'], intervalos: [{ ini: '09:25', fim: '09:45', nome: 'Recreio' }, { ini: '12:10', fim: '13:10', nome: 'Almoço (EMTI)' }] },
+          V: { nome: 'Vespertino', horarios: ['13:10', '14:00', '14:50', '15:55', '16:45'], intervalos: [{ ini: '15:40', fim: '15:55', nome: 'Recreio' }] },
+          N: { nome: 'Noturno', horarios: ['19:00', '19:33', '20:07', '21:00', '21:33', '22:07'], intervalos: [{ ini: '20:40', fim: '21:00', nome: 'Recreio' }] }
         },
         prefs: { maxMesmaDiscDia: 2, permitirDupla: true }
       },

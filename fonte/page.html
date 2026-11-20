@@ -103,6 +103,8 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .cell.flash{animation:fl 1.2s 2}
 @keyframes fl{50%{outline:4px solid var(--accent)}}
 @media (prefers-reduced-motion:reduce){.cell{transition:none}.cell.flash{animation:none;outline:4px solid var(--accent)}}
+.sched tr.ivr td{height:auto}
+.intv{text-align:center;font-size:12px;font-weight:600;color:var(--muted);background:repeating-linear-gradient(90deg,var(--panel2) 0 10px,transparent 10px 14px);border-radius:8px;padding:3px}
 .tray .it{display:flex;gap:8px;align-items:center;padding:8px;border-radius:10px;border:1px solid var(--line);margin-bottom:6px;background:var(--panel);cursor:grab}
 .tray .it:active{cursor:grabbing}
 .tray .it .c{width:10px;align-self:stretch;border-radius:5px}

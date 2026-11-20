@@ -203,6 +203,9 @@ const contagem = () => M.contagem();
 function conflitosSet() { const s = new Set(); for (const p of PROBS) { if (p.tipo === 'choque') p.cells.forEach(c => s.add(c.join('|'))); if (p.tipo === 'indisp' || p.tipo === 'fora') s.add([p.turma, p.d, p.a].join('|')); } return s; }
 function ordTurmas() { const o = { M: 0, V: 1, N: 2 }; return S.turmas.slice().sort((a, b) => (o[a.turno] ?? 3) - (o[b.turno] ?? 3) || (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome, 'pt')); }
 const turnoNome = k => S.config.turnos[k]?.nome || k;
+/* intervalo (recreio/almoço) que fica logo antes da aula de índice a */
+function intervaloAntes(tu, a) { const c = S.config.turnos[tu]; if (!c || !a) return null; const h = c.horarios[a], ant = c.horarios[a - 1]; return (c.intervalos || []).find(iv => iv.fim <= h && iv.ini >= ant) || null; }
+const txtIntervalo = iv => `${iv.nome} · ${iv.ini}–${iv.fim}`;
 
 /* ---------------- roteamento ---------------- */
 const VIEWS = {};
@@ -483,6 +486,7 @@ function gradeTurma(t) {
   const conf = conflitosSet(), g = S.grade[t.id] || {}, hs = S.config.turnos[t.turno]?.horarios || [], cont = contagem();
   let rows = '';
   for (let a = 0; a < t.aulasDia; a++) {
+    const iv = intervaloAntes(t.turno, a); if (iv) rows += `<tr class="ivr"><td class="h"></td><td colspan="${S.config.dias.length}"><div class="intv">${E(txtIntervalo(iv))}</div></td></tr>`;
     rows += `<tr><td class="h"><b>${a + 1}ª</b>${hs[a] || ''}</td>`;
     for (let d = 0; d < S.config.dias.length; d++) {
       if (d >= M.diasT(t)) { rows += `<td><div class="cell off" aria-label="sem aula"></div></td>`; continue; }
@@ -514,6 +518,7 @@ function gradeProf(p) {
     const hs = S.config.turnos[tu].horarios;
     html += `<h3 style="margin-top:14px">${E(turnoNome(tu))}</h3><div class="scroll"><table class="sched"><thead><tr><th style="width:74px"></th>${S.config.dias.map(d => `<th>${E(d)}</th>`).join('')}</tr></thead><tbody>`;
     hs.forEach((h, a) => {
+      const iv = intervaloAntes(tu, a); if (iv) html += `<tr class="ivr"><td class="h"></td><td colspan="${S.config.dias.length}"><div class="intv">${E(txtIntervalo(iv))}</div></td></tr>`;
       html += `<tr><td class="h"><b>${a + 1}ª</b>${h}</td>`;
       for (let d = 0; d < S.config.dias.length; d++) {
         const aqui = minhas.filter(x => x.t.turno === tu && x.d === d && M.hor(x.t, x.a) === h), k = d + '|' + h;
@@ -763,7 +768,7 @@ function relDados(k, filtro) {
   }
   if (k === 'turmas') for (const t of ordTurmas().filter(t => !filtro || t.id === filtro)) {
     const hs = S.config.turnos[t.turno]?.horarios || [], rows = [];
-    for (let a = 0; a < t.aulasDia; a++) rows.push([{ t: (a + 1) + 'ª aula\n' + (hs[a] || ''), bold: true, align: 'left' }, ...D.map((x, d) => { if (d >= M.diasT(t)) return { t: '', fill: '#eceef3' }; const aid = (S.grade[t.id] || {})[d + '-' + a]; if (!aid || !M.atr[aid]) return ''; const ds = discDe(aid), p = profDe(aid); return { t: (ds?.nome || '') + '\n' + (p?.nome || ''), bold: true, fill: ds?.cor, color: '#fff', color2: '#fff' }; })]);
+    for (let a = 0; a < t.aulasDia; a++) { const iv = intervaloAntes(t.turno, a); if (iv) rows.push([{ t: iv.nome, bold: true, align: 'left', fill: '#eceef3' }, ...D.map((x, i) => ({ t: i === Math.floor(D.length / 2) ? iv.ini + ' – ' + iv.fim : '', fill: '#eceef3', color: '#5b6475' }))]); rows.push([{ t: (a + 1) + 'ª aula\n' + (hs[a] || ''), bold: true, align: 'left' }, ...D.map((x, d) => { if (d >= M.diasT(t)) return { t: '', fill: '#eceef3' }; const aid = (S.grade[t.id] || {})[d + '-' + a]; if (!aid || !M.atr[aid]) return ''; const ds = discDe(aid), p = profDe(aid); return { t: (ds?.nome || '') + '\n' + (p?.nome || ''), bold: true, fill: ds?.cor, color: '#fff', color2: '#fff' }; })]); }
     out.push({ title: 'Horário — ' + t.nome, subtitle: turnoNome(t.turno) + ' · ' + S.config.escola, head: ['Aula', ...D], rows, widths: [0.9, ...D.map(() => 2)], fontSize: 9, sheet: t.sigla || t.nome });
   }
   if (k === 'profs') for (const p of S.professores.filter(p => !filtro || p.id === filtro)) {
@@ -843,7 +848,8 @@ VIEWS.ajustes = () => {
   <div class="card grid"><h2>Escola</h2><label class="f">Nome da escola<input type="text" id="cEsc" value="${E(c.escola)}"></label><label class="f">Ano letivo<input type="number" id="cAno" value="${c.ano || ''}" style="width:120px"></label>
    <div><b style="font-size:13px">Dias letivos</b><div class="row" style="margin-top:6px">${todos.map(d => `<label class="row" style="gap:4px"><input type="checkbox" class="cDia" value="${d}" ${c.dias.includes(d) ? 'checked' : ''}>${d}</label>`).join('')}</div></div></div>
   <div class="card grid"><h2>Horários dos turnos</h2><p class="hint">Início de cada aula, separados por vírgula. Professores que dão aula em turnos diferentes só têm conflito quando os horários coincidem.</p>
-   ${Object.entries(c.turnos).map(([k, t]) => `<label class="f">${E(t.nome)} (${t.horarios.length} aulas)<input type="text" class="cTur" data-k="${k}" value="${E(t.horarios.join(', '))}"></label>`).join('')}</div>
+   ${Object.entries(c.turnos).map(([k, t]) => `<div class="grid" style="gap:6px"><label class="f">${E(t.nome)} — início de cada aula (${t.horarios.length} aulas)<input type="text" class="cTur" data-k="${k}" value="${E(t.horarios.join(', '))}"></label><label class="f">Intervalos do ${E(t.nome.toLowerCase())}<input type="text" class="cInt" data-k="${k}" value="${E((t.intervalos || []).map(iv => iv.ini + '-' + iv.fim + ' ' + iv.nome).join('; '))}" placeholder="09:25-09:45 Recreio; 12:10-13:10 Almoço"></label></div>`).join('')}
+   <p class="hint">Turmas com menos aulas por dia usam só os primeiros horários do turno (ex.: regular com 6 aulas termina antes do almoço; EMTI com 7 usa também a aula das 13:10).</p></div>
   <div class="card grid"><h2>Preferências do gerador</h2>
    <label class="f">Máximo de aulas da mesma disciplina no mesmo dia<input type="number" id="cMax" min="1" max="6" value="${c.prefs.maxMesmaDiscDia}"></label>
    <label class="row"><input type="checkbox" id="cDupla" ${c.prefs.permitirDupla !== false ? 'checked' : ''}> Permitir aula dupla (duas seguidas da mesma disciplina)</label>
@@ -893,6 +899,7 @@ ACT.salvaCfg = () => {
   snap();
   c.escola = $('cEsc').value.trim() || c.escola; c.ano = +$('cAno').value || c.ano; c.dias = dias;
   for (const [k, hs] of Object.entries(tur)) c.turnos[k].horarios = hs;
+  for (const el of document.querySelectorAll('.cInt')) { const ivs = []; for (const part of el.value.split(';').map(x => x.trim()).filter(Boolean)) { const m = /^(\d{1,2}[:h]\d{2})\s*[-–a]+\s*(\d{1,2}[:h]\d{2})\s*(.*)$/i.exec(part); if (!m) return toast(`Intervalo inválido: “${part}”. Use o formato 09:25-09:45 Recreio.`); const f = h => h.replace('h', ':').padStart(5, '0'); ivs.push({ ini: f(m[1]), fim: f(m[2]), nome: m[3].trim() || 'Intervalo' }); } c.turnos[el.dataset.k].intervalos = ivs; }
   c.prefs.maxMesmaDiscDia = Math.max(1, +$('cMax').value || 2); c.prefs.permitirDupla = $('cDupla').checked;
   S.turmas.forEach(t => { const max = c.turnos[t.turno]?.horarios.length || t.aulasDia; if (t.aulasDia > max) t.aulasDia = max; });
   mudou('config', 'turmas'); render(); toast('Configurações salvas.');
