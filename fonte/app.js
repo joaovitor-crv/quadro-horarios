@@ -6,7 +6,7 @@ const UI = { modo: 'turma', turma: null, prof: null, turnoGeral: 'M', sel: null,
 
 
 /* ---------------- modo site (Supabase) ---------------- */
-const ERROS = { LOGIN_INVALIDO: 'Usuário ou senha incorretos.', MUITAS_TENTATIVAS: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.', SENHA_CURTA: 'A senha precisa ter pelo menos 6 caracteres.', SENHA_FRACA: 'Senha muito fácil. Escolha outra.', SENHA_ATUAL_ERRADA: 'A senha atual está incorreta.', NAO_PODE_SI_MESMO: 'Você não pode remover o próprio acesso de administrador.', SEM_PERMISSAO: 'Apenas administradores podem fazer isso.', SESSAO_INVALIDA: 'Sua sessão expirou. Entre novamente.', NOME_VAZIO: 'Informe o nome.', PAPEL_INVALIDO: 'Papel inválido.' };
+const ERROS = { LOGIN_INVALIDO: 'Usuário ou senha incorretos.', MUITAS_TENTATIVAS: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.', SENHA_CURTA: 'A senha precisa ter pelo menos 6 caracteres.', SENHA_FRACA: 'Senha muito fácil. Escolha outra.', SENHA_ATUAL_ERRADA: 'A senha atual está incorreta.', NAO_PODE_SI_MESMO: 'Você não pode remover o próprio acesso de administrador.', SEM_PERMISSAO: 'Apenas administradores podem fazer isso.', SESSAO_INVALIDA: 'Sua sessão expirou. Entre novamente.', NOME_VAZIO: 'Informe o nome.', PAPEL_INVALIDO: 'Papel inválido.', ASSINATURA_VENCIDA: 'O acesso da escola está vencido: os dados ficam só para consulta e exportação.', ESCOLA_SUSPENSA: 'O acesso desta escola está suspenso.', SEM_ESCOLA: 'Esta conta é do painel do dono.' };
 const msgErro = e => { const m = String(e && (e.code || e.message) || e); if (/duplicate key|unique/i.test(m)) return 'Esse nome de usuário já existe.'; if (/check constraint.*usuario/i.test(m)) return 'O usuário deve ter de 3 a 40 letras minúsculas, sem espaços.'; if (/Failed to fetch|NetworkError/i.test(m)) return 'Sem conexão com o servidor. Verifique a internet.'; return ERROS[m] || m; };
 async function rpc(fn, args) {
   if (window.QH_MOCK) return window.QH_MOCK(fn, args || {});
@@ -21,8 +21,10 @@ const Auth = {
   gravar(t) { try { t ? localStorage.setItem('qh.token', t) : localStorage.removeItem('qh.token'); } catch (e) { } },
   async garantir() {
     const t = Auth.token || Auth.ler();
-    if (t) { try { Auth.eu = await rpc('quadro_eu', { p_token: t }); Auth.token = t; } catch (e) { Auth.token = null; Auth.gravar(null); } }
-    if (!Auth.token) await Auth.tela();
+    let aviso = '';
+    if (t) { try { Auth.eu = await rpc('quadro_eu', { p_token: t }); Auth.token = t; } catch (e) { Auth.token = null; Auth.gravar(null); if (/ESCOLA_SUSPENSA/.test(e.code || e.message)) aviso = ERROS.ESCOLA_SUSPENSA; } }
+    if (!Auth.token) await Auth.tela(aviso);
+    if (Auth.eu.dono) { location.href = 'admin/'; await new Promise(() => { }); }
     if (Auth.eu.trocar_senha) await Auth.trocaObrigatoria();
     Auth.rodape();
   },
@@ -41,6 +43,7 @@ const Auth = {
         ev.preventDefault(); $('lBtn').disabled = true; $('lMsg').textContent = '';
         try {
           const r = await rpc('quadro_login', { p_usuario: $('lU').value.trim(), p_senha: $('lS').value });
+          if (r.dono) { Auth.gravar(r.token); location.href = 'admin/'; return; }
           Auth.token = r.token; Auth.eu = r; Auth.gravar(r.token); el.hidden = true; el.innerHTML = ''; res();
         } catch (e) { $('lMsg').textContent = msgErro(e); $('lBtn').disabled = false; }
       };
@@ -75,9 +78,11 @@ const DOCS = ['config', 'professores', 'turmas', 'disciplinas', 'atribs', 'grade
 const P = {
   db: null, dirty: new Set(), timer: null, writing: false, last: {}, ok: true,
   pack(k) { return k === 'grade' ? { grade: S.grade, fixas: S.fixas } : S[k]; },
-  local() { try { localStorage.setItem('quadroHorarios.v1', JSON.stringify(S)); } catch (e) { } },
+  chave() { const id = WEB && Auth.eu?.escola?.id; return 'quadroHorarios.v1' + (id && id !== 1 ? '.e' + id : ''); },
+  somenteLeitura() { return !!(WEB && Auth.eu?.escola && !Auth.eu.escola.liberada); },
+  local() { try { localStorage.setItem(P.chave(), JSON.stringify(S)); } catch (e) { } },
   status(cls, txt) { const s = $('save'); s.className = 'save ' + cls; s.querySelector('span').textContent = txt; },
-  mark(...ks) { ks.forEach(k => P.dirty.add(k)); P.local(); P.status('pend', 'Alterações não salvas…'); clearTimeout(P.timer); P.timer = setTimeout(P.flush, 700); },
+  mark(...ks) { ks.forEach(k => P.dirty.add(k)); P.local(); if (P.somenteLeitura()) { P.status('err', 'Somente leitura — acesso vencido'); return; } P.status('pend', 'Alterações não salvas…'); clearTimeout(P.timer); P.timer = setTimeout(P.flush, 700); },
   async flush() {
     if (P.writing) { P.timer = setTimeout(P.flush, 400); return; }
     if (WEB) return P.flushWeb();
@@ -107,7 +112,8 @@ const P = {
       P.status('', 'Tudo salvo · ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       const m = msgErro(e);
-      if (/SESSAO_INVALIDA/.test(e.code || e.message)) { P.writing = false; P.status('err', 'Sessão expirada'); Auth.token = null; Auth.gravar(null); await Auth.tela(ERROS.SESSAO_INVALIDA); Auth.rodape(); P.timer = setTimeout(P.flush, 100); return; }
+      if (/ASSINATURA_VENCIDA/.test(e.code || e.message)) { P.writing = false; if (Auth.eu?.escola) Auth.eu.escola.liberada = false; P.status('err', 'Somente leitura — acesso vencido'); toast(m, 7000); return; }
+      if (/SESSAO_INVALIDA|ESCOLA_SUSPENSA/.test(e.code || e.message)) { P.writing = false; P.status('err', 'Sessão expirada'); Auth.token = null; Auth.gravar(null); await Auth.tela(ERROS.SESSAO_INVALIDA); Auth.rodape(); P.timer = setTimeout(P.flush, 100); return; }
       P.status('err', 'Não salvou no servidor — guardado neste navegador'); toast('Não consegui salvar no servidor: ' + m + ' Vou tentar de novo.', 5000);
       P.writing = false; clearTimeout(P.timer); P.timer = setTimeout(P.flush, 8000); return;
     }
@@ -117,6 +123,7 @@ const P = {
   async loadWeb(local) {
     P.status('pend', 'Conectando ao servidor…');
     await Auth.garantir();
+    try { local = JSON.parse(localStorage.getItem(P.chave()) || 'null'); } catch (e) { local = null; }
     try {
       const got = await rpc('quadro_ler', { p_token: Auth.token });
       if (got && Object.keys(got).length) {
@@ -127,7 +134,9 @@ const P = {
       } else if (local && local.turmas && local.turmas.length) { S = local; P.mark(...DOCS); }
       else P.status('', 'Servidor conectado');
     } catch (e) { if (local) S = local; P.status('err', 'Servidor indisponível — usando este navegador'); toast(msgErro(e), 5000); }
+    if (P.somenteLeitura()) P.status('err', 'Somente leitura — acesso vencido');
     normaliza();
+    if (!S.config.escola && Auth.eu?.escola?.nome) S.config.escola = Auth.eu.escola.nome;
   },
   async load() {
     let local = null; try { local = JSON.parse(localStorage.getItem('quadroHorarios.v1') || 'null'); } catch (e) { }
