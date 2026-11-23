@@ -169,6 +169,19 @@ function normaliza() {
       UI.migrou = acs.size;
     }
   }
+  // Educação Física não tem horário no noturno (pedido da escola): remove uma vez dos dados já importados
+  if (S.config.efNoturnoFora === undefined) {
+    S.config.efNoturnoFora = true;
+    const ef = new Set(S.disciplinas.filter(d => U.ehEF(d.nome)).map(d => d.id)), tn = new Set(S.turmas.filter(t => t.turno === 'N').map(t => t.id));
+    const sai = S.atribs.filter(a => ef.has(a.disc) && tn.has(a.turma));
+    if (sai.length) {
+      const antes = {}; S.professores.forEach(p => antes[p.id] = S.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0));
+      const ids = new Set(sai.map(a => a.id)); S.atribs = S.atribs.filter(a => !ids.has(a.id));
+      S.disciplinas = S.disciplinas.filter(d => !ef.has(d.id) || S.atribs.some(a => a.disc === d.id));
+      S.professores.forEach(p => { const novo = S.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0); if (p.carga == null || p.carga === antes[p.id]) p.carga = novo; });
+      UI.migrouEF = sai.length;
+    }
+  }
   const ids = new Set(S.atribs.map(a => a.id));
   for (const [tid, g] of Object.entries(S.grade)) for (const [k, v] of Object.entries(g)) if (!ids.has(v)) { delete g[k]; delete S.fixas[tid + '|' + k]; }
   for (const t of S.turmas) { const max = S.config.turnos[t.turno]?.horarios.length; if (max && t.aulasDia > max) t.aulasDia = max; }
@@ -871,6 +884,7 @@ VIEWS.ajustes = () => {
   <div class="card grid"><h2>Preferências do gerador</h2>
    <label class="f">Máximo de aulas da mesma disciplina no mesmo dia<input type="number" id="cMax" min="1" max="6" value="${c.prefs.maxMesmaDiscDia}"></label>
    <label class="row"><input type="checkbox" id="cAC" ${c.acFora !== false ? 'checked' : ''}> Atividades complementares ficam fora da grade (vale para as próximas importações)</label>
+   <label class="row"><input type="checkbox" id="cEFN" ${c.efNoturnoFora !== false ? 'checked' : ''}> Educação Física não tem horário nas turmas do noturno (vale para as próximas importações)</label>
    <label class="row"><input type="checkbox" id="cDupla" ${c.prefs.permitirDupla !== false ? 'checked' : ''}> Permitir aula dupla (duas seguidas da mesma disciplina)</label>
    <p class="hint">Regras obrigatórias (sempre respeitadas): professor em uma turma por vez, disponibilidade do professor, quantidade de aulas de cada disciplina, aulas por dia da turma. As preferências acima e “evitar janelas” entram como penalidade.</p></div>
   ${WEB ? `<div class="card grid"><h2>Minha senha</h2><p class="hint">Conectado como <b>${E(Auth.eu?.nome)}</b> (${E(Auth.eu?.usuario)}).</p><div class="row"><button class="btn" data-act="minhaSenha">Trocar minha senha</button></div></div>` : ''}
@@ -919,7 +933,7 @@ ACT.salvaCfg = () => {
   c.escola = $('cEsc').value.trim() || c.escola; c.ano = +$('cAno').value || c.ano; c.dias = dias;
   for (const [k, hs] of Object.entries(tur)) c.turnos[k].horarios = hs;
   for (const el of document.querySelectorAll('.cInt')) { const ivs = []; for (const part of el.value.split(';').map(x => x.trim()).filter(Boolean)) { const m = /^(\d{1,2}[:h]\d{2})\s*[-–a]+\s*(\d{1,2}[:h]\d{2})\s*(.*)$/i.exec(part); if (!m) return toast(`Intervalo inválido: “${part}”. Use o formato 09:25-09:45 Recreio.`); const f = h => h.replace('h', ':').padStart(5, '0'); ivs.push({ ini: f(m[1]), fim: f(m[2]), nome: m[3].trim() || 'Intervalo' }); } c.turnos[el.dataset.k].intervalos = ivs; }
-  c.prefs.maxMesmaDiscDia = Math.max(1, +$('cMax').value || 2); c.prefs.permitirDupla = $('cDupla').checked; c.acFora = $('cAC').checked;
+  c.prefs.maxMesmaDiscDia = Math.max(1, +$('cMax').value || 2); c.prefs.permitirDupla = $('cDupla').checked; c.acFora = $('cAC').checked; c.efNoturnoFora = $('cEFN').checked;
   S.turmas.forEach(t => { const max = c.turnos[t.turno]?.horarios.length || t.aulasDia; if (t.aulasDia > max) t.aulasDia = max; });
   mudou('config', 'turmas'); render(); toast('Configurações salvas.');
 };
@@ -927,5 +941,5 @@ ACT.apagaTudo = () => confirma('Apagar professores, turmas, disciplinas, atribui
 
 /* ---------------- início ---------------- */
 if (window.__TEST) window.__T = { gerarPDF, gerarXLS, relDados, get S() { return S; } };
-(async () => { await P.load(); recalc(); render(); if (UI.migrou) { P.mark(...DOCS); toast(`As atividades complementares (${UI.migrou} disciplinas) saíram da grade. Gere o horário de novo.`, 7000); } })();
+(async () => { await P.load(); recalc(); render(); if (UI.migrou) { P.mark(...DOCS); toast(`As atividades complementares (${UI.migrou} disciplinas) saíram da grade. Gere o horário de novo.`, 7000); } if (UI.migrouEF) { P.mark(...DOCS); toast(`Educação Física saiu do noturno (${UI.migrouEF} turmas). Ela não tem horário nas turmas da noite.`, 7000); } })();
 }

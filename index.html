@@ -224,6 +224,7 @@ const U = {
     let i = 2; while (usadas.includes(s + i)) i++; return s + i;
   },
   ehAC: nome => /^ativ(idade)?s?\.?\s*(compl|comp)/.test(U.norm(nome)),
+  ehEF: nome => /^(educacao fisica|ed\.?\s*fis(ica)?\b)/.test(U.norm(nome)),
   palette: ['#2f6fdb', '#e0573f', '#1f9e7a', '#a259d9', '#e39b1b', '#d6457f', '#2aa0b8', '#6b8e23', '#c0601f', '#5b6bd6', '#b8426b', '#3f8f5a', '#8a6d3b', '#4f9fd8', '#d9734a', '#7c5cc4', '#239c9c', '#b0882b', '#c94c4c', '#56799e'],
   primeiroNome(n) { const p = String(n).trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1] : p[0]; }
 };
@@ -464,7 +465,7 @@ const Importer = {
     }
     // turmas usadas
     const turmas = cols.map(k => {
-      const serie = k.serie.replace(/\s*ANO\s*$/i, '').trim(), soma = discs.reduce((s, d) => s + (U.ehAC(d.nome) ? 0 : (d.qt[k.c] || 0)), 0);
+      const serie = k.serie.replace(/\s*ANO\s*$/i, '').trim(), soma = discs.reduce((s, d) => s + (U.ehAC(d.nome) || (k.turno === 'N' && U.ehEF(d.nome)) ? 0 : (d.qt[k.c] || 0)), 0);
       const temProf = linhasProf.some(p => p.marks[k.c]);
       let nome = (serie ? serie + ' ' : '') + (/eja/i.test(k.nivel + k.modal + k.label) ? '' : (/fund/i.test(k.nivel) ? 'Ano ' : 'EM ')) + k.label.replace(/^(EF AF|EM)\s*/i, '').replace(/\bINT\.?\s*/i, 'Integral ').replace(/\bREG\.?\s*/i, 'Regular ').replace(/\bTec\b/i, 'Téc.').replace(/\s+/g, ' ');
       if (/fund/i.test(k.nivel) || /^EF/i.test(k.label)) nome = (serie || '') + ' Ano';
@@ -509,8 +510,12 @@ const Importer = {
       st.turmas.push({ id: tid, nome: t.nome, sigla: Importer.siglaTurma(t.nome), turno: t.turno, aulasDia: Math.min(cap, Math.max(1, t.aulasDia || Math.ceil(t.soma / st.config.dias.length))), ordem: i });
     });
     const dMap = {}; let ci = 0;
-    const discUsada = new Set(prop.atr.filter(a => tMap[a.col] && a.aulas > 0).map(a => a.discKey).concat(prop.semProf.filter(s => tMap[s.col]).map(s => s.discKey)));
     const semAC = !cfg || cfg.acFora !== false;
+    // Educação Física não tem horário no noturno (pedido da escola)
+    const semEFN = !cfg || cfg.efNoturnoFora !== false, turnoCol = {};
+    prop.turmas.forEach(t => turnoCol[t.col] = t.turno);
+    const foraEFN = (nome, col) => semEFN && turnoCol[col] === 'N' && U.ehEF(nome);
+    const discUsada = new Set(prop.atr.filter(a => tMap[a.col] && a.aulas > 0 && !foraEFN(a.disc, a.col)).map(a => a.discKey).concat(prop.semProf.filter(s => tMap[s.col] && !foraEFN(s.disc, s.col)).map(s => s.discKey)));
     for (const d of prop.discs) {
       if (!discUsada.has(d.key) || (semAC && U.ehAC(d.nome))) continue;
       const ex = st.disciplinas.find(x => U.norm(x.nome) === U.norm(d.nome));
@@ -522,7 +527,7 @@ const Importer = {
     const escolhaDup = {}; prop.dups.forEach(d => escolhaDup[d.chave] = d.escolha);
     let pi = 0;
     for (const a of prop.atr) {
-      if (!tMap[a.col] || !(a.aulas > 0)) continue;
+      if (!tMap[a.col] || !(a.aulas > 0) || foraEFN(a.disc, a.col)) continue;
       const ch = a.discKey + '|' + a.col; if (escolhaDup[ch] != null && escolhaDup[ch] !== a.linha) continue;
       const k = keyP(a);
       if (!pMap[k]) { const id = 'p' + (++pi); pMap[k] = id; st.professores.push({ id, nome: a.prof, masp: a.masp || '', cor: U.palette[(pi * 7) % U.palette.length], carga: null, indisp: [], obs: '' }); }
@@ -532,10 +537,10 @@ const Importer = {
       const ex = st.atribs.find(x => x.disc === did && x.turma === tid && x.prof === pid);
       if (ex) ex.aulas += a.aulas; else st.atribs.push({ id: U.uid('a'), disc: did, turma: tid, prof: pid, aulas: a.aulas, marca: a.marca === 'X' ? '' : a.marca });
     }
-    for (const s of prop.semProf) { if (!tMap[s.col] || !dMap[s.discKey]) continue; st.atribs.push({ id: U.uid('a'), disc: dMap[s.discKey], turma: tMap[s.col], prof: '', aulas: s.aulas, marca: '' }); }
+    for (const s of prop.semProf) { if (!tMap[s.col] || !dMap[s.discKey] || foraEFN(s.disc, s.col)) continue; st.atribs.push({ id: U.uid('a'), disc: dMap[s.discKey], turma: tMap[s.col], prof: '', aulas: s.aulas, marca: '' }); }
     st.professores = st.professores.filter(p => st.atribs.some(a => a.prof === p.id));
     for (const p of st.professores) p.carga = st.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0);
-    st.config.acFora = semAC;
+    st.config.acFora = semAC; st.config.efNoturnoFora = semEFN;
     st.professores.sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
     return st;
   },
@@ -1084,6 +1089,19 @@ function normaliza() {
       S.professores.forEach(p => { const novo = S.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0); if (p.carga == null || p.carga === antes[p.id]) p.carga = novo; });
       for (const t of S.turmas) { const dem = S.atribs.filter(a => a.turma === t.id).reduce((s, a) => s + a.aulas, 0), max = S.config.turnos[t.turno]?.horarios.length || t.aulasDia, dias = Math.min(t.dias || S.config.dias.length, S.config.dias.length); t.aulasDia = Math.max(1, Math.min(max, Math.ceil(dem / dias))); }
       UI.migrou = acs.size;
+    }
+  }
+  // Educação Física não tem horário no noturno (pedido da escola): remove uma vez dos dados já importados
+  if (S.config.efNoturnoFora === undefined) {
+    S.config.efNoturnoFora = true;
+    const ef = new Set(S.disciplinas.filter(d => U.ehEF(d.nome)).map(d => d.id)), tn = new Set(S.turmas.filter(t => t.turno === 'N').map(t => t.id));
+    const sai = S.atribs.filter(a => ef.has(a.disc) && tn.has(a.turma));
+    if (sai.length) {
+      const antes = {}; S.professores.forEach(p => antes[p.id] = S.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0));
+      const ids = new Set(sai.map(a => a.id)); S.atribs = S.atribs.filter(a => !ids.has(a.id));
+      S.disciplinas = S.disciplinas.filter(d => !ef.has(d.id) || S.atribs.some(a => a.disc === d.id));
+      S.professores.forEach(p => { const novo = S.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0); if (p.carga == null || p.carga === antes[p.id]) p.carga = novo; });
+      UI.migrouEF = sai.length;
     }
   }
   const ids = new Set(S.atribs.map(a => a.id));
@@ -1788,6 +1806,7 @@ VIEWS.ajustes = () => {
   <div class="card grid"><h2>Preferências do gerador</h2>
    <label class="f">Máximo de aulas da mesma disciplina no mesmo dia<input type="number" id="cMax" min="1" max="6" value="${c.prefs.maxMesmaDiscDia}"></label>
    <label class="row"><input type="checkbox" id="cAC" ${c.acFora !== false ? 'checked' : ''}> Atividades complementares ficam fora da grade (vale para as próximas importações)</label>
+   <label class="row"><input type="checkbox" id="cEFN" ${c.efNoturnoFora !== false ? 'checked' : ''}> Educação Física não tem horário nas turmas do noturno (vale para as próximas importações)</label>
    <label class="row"><input type="checkbox" id="cDupla" ${c.prefs.permitirDupla !== false ? 'checked' : ''}> Permitir aula dupla (duas seguidas da mesma disciplina)</label>
    <p class="hint">Regras obrigatórias (sempre respeitadas): professor em uma turma por vez, disponibilidade do professor, quantidade de aulas de cada disciplina, aulas por dia da turma. As preferências acima e “evitar janelas” entram como penalidade.</p></div>
   ${WEB ? `<div class="card grid"><h2>Minha senha</h2><p class="hint">Conectado como <b>${E(Auth.eu?.nome)}</b> (${E(Auth.eu?.usuario)}).</p><div class="row"><button class="btn" data-act="minhaSenha">Trocar minha senha</button></div></div>` : ''}
@@ -1836,7 +1855,7 @@ ACT.salvaCfg = () => {
   c.escola = $('cEsc').value.trim() || c.escola; c.ano = +$('cAno').value || c.ano; c.dias = dias;
   for (const [k, hs] of Object.entries(tur)) c.turnos[k].horarios = hs;
   for (const el of document.querySelectorAll('.cInt')) { const ivs = []; for (const part of el.value.split(';').map(x => x.trim()).filter(Boolean)) { const m = /^(\d{1,2}[:h]\d{2})\s*[-–a]+\s*(\d{1,2}[:h]\d{2})\s*(.*)$/i.exec(part); if (!m) return toast(`Intervalo inválido: “${part}”. Use o formato 09:25-09:45 Recreio.`); const f = h => h.replace('h', ':').padStart(5, '0'); ivs.push({ ini: f(m[1]), fim: f(m[2]), nome: m[3].trim() || 'Intervalo' }); } c.turnos[el.dataset.k].intervalos = ivs; }
-  c.prefs.maxMesmaDiscDia = Math.max(1, +$('cMax').value || 2); c.prefs.permitirDupla = $('cDupla').checked; c.acFora = $('cAC').checked;
+  c.prefs.maxMesmaDiscDia = Math.max(1, +$('cMax').value || 2); c.prefs.permitirDupla = $('cDupla').checked; c.acFora = $('cAC').checked; c.efNoturnoFora = $('cEFN').checked;
   S.turmas.forEach(t => { const max = c.turnos[t.turno]?.horarios.length || t.aulasDia; if (t.aulasDia > max) t.aulasDia = max; });
   mudou('config', 'turmas'); render(); toast('Configurações salvas.');
 };
@@ -1844,7 +1863,7 @@ ACT.apagaTudo = () => confirma('Apagar professores, turmas, disciplinas, atribui
 
 /* ---------------- início ---------------- */
 if (window.__TEST) window.__T = { gerarPDF, gerarXLS, relDados, get S() { return S; } };
-(async () => { await P.load(); recalc(); render(); if (UI.migrou) { P.mark(...DOCS); toast(`As atividades complementares (${UI.migrou} disciplinas) saíram da grade. Gere o horário de novo.`, 7000); } })();
+(async () => { await P.load(); recalc(); render(); if (UI.migrou) { P.mark(...DOCS); toast(`As atividades complementares (${UI.migrou} disciplinas) saíram da grade. Gere o horário de novo.`, 7000); } if (UI.migrouEF) { P.mark(...DOCS); toast(`Educação Física saiu do noturno (${UI.migrouEF} turmas). Ela não tem horário nas turmas da noite.`, 7000); } })();
 }
 
 </script>

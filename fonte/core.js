@@ -24,6 +24,7 @@ const U = {
     let i = 2; while (usadas.includes(s + i)) i++; return s + i;
   },
   ehAC: nome => /^ativ(idade)?s?\.?\s*(compl|comp)/.test(U.norm(nome)),
+  ehEF: nome => /^(educacao fisica|ed\.?\s*fis(ica)?\b)/.test(U.norm(nome)),
   palette: ['#2f6fdb', '#e0573f', '#1f9e7a', '#a259d9', '#e39b1b', '#d6457f', '#2aa0b8', '#6b8e23', '#c0601f', '#5b6bd6', '#b8426b', '#3f8f5a', '#8a6d3b', '#4f9fd8', '#d9734a', '#7c5cc4', '#239c9c', '#b0882b', '#c94c4c', '#56799e'],
   primeiroNome(n) { const p = String(n).trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1] : p[0]; }
 };
@@ -264,7 +265,7 @@ const Importer = {
     }
     // turmas usadas
     const turmas = cols.map(k => {
-      const serie = k.serie.replace(/\s*ANO\s*$/i, '').trim(), soma = discs.reduce((s, d) => s + (U.ehAC(d.nome) ? 0 : (d.qt[k.c] || 0)), 0);
+      const serie = k.serie.replace(/\s*ANO\s*$/i, '').trim(), soma = discs.reduce((s, d) => s + (U.ehAC(d.nome) || (k.turno === 'N' && U.ehEF(d.nome)) ? 0 : (d.qt[k.c] || 0)), 0);
       const temProf = linhasProf.some(p => p.marks[k.c]);
       let nome = (serie ? serie + ' ' : '') + (/eja/i.test(k.nivel + k.modal + k.label) ? '' : (/fund/i.test(k.nivel) ? 'Ano ' : 'EM ')) + k.label.replace(/^(EF AF|EM)\s*/i, '').replace(/\bINT\.?\s*/i, 'Integral ').replace(/\bREG\.?\s*/i, 'Regular ').replace(/\bTec\b/i, 'Téc.').replace(/\s+/g, ' ');
       if (/fund/i.test(k.nivel) || /^EF/i.test(k.label)) nome = (serie || '') + ' Ano';
@@ -309,8 +310,12 @@ const Importer = {
       st.turmas.push({ id: tid, nome: t.nome, sigla: Importer.siglaTurma(t.nome), turno: t.turno, aulasDia: Math.min(cap, Math.max(1, t.aulasDia || Math.ceil(t.soma / st.config.dias.length))), ordem: i });
     });
     const dMap = {}; let ci = 0;
-    const discUsada = new Set(prop.atr.filter(a => tMap[a.col] && a.aulas > 0).map(a => a.discKey).concat(prop.semProf.filter(s => tMap[s.col]).map(s => s.discKey)));
     const semAC = !cfg || cfg.acFora !== false;
+    // Educação Física não tem horário no noturno (pedido da escola)
+    const semEFN = !cfg || cfg.efNoturnoFora !== false, turnoCol = {};
+    prop.turmas.forEach(t => turnoCol[t.col] = t.turno);
+    const foraEFN = (nome, col) => semEFN && turnoCol[col] === 'N' && U.ehEF(nome);
+    const discUsada = new Set(prop.atr.filter(a => tMap[a.col] && a.aulas > 0 && !foraEFN(a.disc, a.col)).map(a => a.discKey).concat(prop.semProf.filter(s => tMap[s.col] && !foraEFN(s.disc, s.col)).map(s => s.discKey)));
     for (const d of prop.discs) {
       if (!discUsada.has(d.key) || (semAC && U.ehAC(d.nome))) continue;
       const ex = st.disciplinas.find(x => U.norm(x.nome) === U.norm(d.nome));
@@ -322,7 +327,7 @@ const Importer = {
     const escolhaDup = {}; prop.dups.forEach(d => escolhaDup[d.chave] = d.escolha);
     let pi = 0;
     for (const a of prop.atr) {
-      if (!tMap[a.col] || !(a.aulas > 0)) continue;
+      if (!tMap[a.col] || !(a.aulas > 0) || foraEFN(a.disc, a.col)) continue;
       const ch = a.discKey + '|' + a.col; if (escolhaDup[ch] != null && escolhaDup[ch] !== a.linha) continue;
       const k = keyP(a);
       if (!pMap[k]) { const id = 'p' + (++pi); pMap[k] = id; st.professores.push({ id, nome: a.prof, masp: a.masp || '', cor: U.palette[(pi * 7) % U.palette.length], carga: null, indisp: [], obs: '' }); }
@@ -332,10 +337,10 @@ const Importer = {
       const ex = st.atribs.find(x => x.disc === did && x.turma === tid && x.prof === pid);
       if (ex) ex.aulas += a.aulas; else st.atribs.push({ id: U.uid('a'), disc: did, turma: tid, prof: pid, aulas: a.aulas, marca: a.marca === 'X' ? '' : a.marca });
     }
-    for (const s of prop.semProf) { if (!tMap[s.col] || !dMap[s.discKey]) continue; st.atribs.push({ id: U.uid('a'), disc: dMap[s.discKey], turma: tMap[s.col], prof: '', aulas: s.aulas, marca: '' }); }
+    for (const s of prop.semProf) { if (!tMap[s.col] || !dMap[s.discKey] || foraEFN(s.disc, s.col)) continue; st.atribs.push({ id: U.uid('a'), disc: dMap[s.discKey], turma: tMap[s.col], prof: '', aulas: s.aulas, marca: '' }); }
     st.professores = st.professores.filter(p => st.atribs.some(a => a.prof === p.id));
     for (const p of st.professores) p.carga = st.atribs.filter(a => a.prof === p.id).reduce((s, a) => s + a.aulas, 0);
-    st.config.acFora = semAC;
+    st.config.acFora = semAC; st.config.efNoturnoFora = semEFN;
     st.professores.sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
     return st;
   },
