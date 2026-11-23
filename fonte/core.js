@@ -377,7 +377,7 @@ const Store = {
   vazio(cfg) {
     return {
       config: cfg ? JSON.parse(JSON.stringify(cfg)) : {
-        escola: 'Escola Estadual Sérgio de Freitas Pacheco', ano: 2026,
+        escola: '', ano: new Date().getFullYear(),
         dias: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'],
         turnos: {
           M: { nome: 'Matutino', horarios: ['06:55', '07:45', '08:35', '09:45', '10:33', '11:21', '13:10'], intervalos: [{ ini: '09:25', fim: '09:45', nome: 'Recreio' }, { ini: '12:10', fim: '13:10', nome: 'Almoço (EMTI)' }] },

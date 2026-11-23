@@ -6,7 +6,10 @@ const UI = { modo: 'turma', turma: null, prof: null, turnoGeral: 'M', sel: null,
 
 
 /* ---------------- modo site (Supabase) ---------------- */
-const ERROS = { LOGIN_INVALIDO: 'Usuário ou senha incorretos.', MUITAS_TENTATIVAS: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.', SENHA_CURTA: 'A senha precisa ter pelo menos 6 caracteres.', SENHA_FRACA: 'Senha muito fácil. Escolha outra.', SENHA_ATUAL_ERRADA: 'A senha atual está incorreta.', NAO_PODE_SI_MESMO: 'Você não pode remover o próprio acesso de administrador.', SEM_PERMISSAO: 'Apenas administradores podem fazer isso.', SESSAO_INVALIDA: 'Sua sessão expirou. Entre novamente.', NOME_VAZIO: 'Informe o nome.', PAPEL_INVALIDO: 'Papel inválido.' };
+const ERROS = { LOGIN_INVALIDO: 'Usuário ou senha incorretos.', MUITAS_TENTATIVAS: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.', SENHA_CURTA: 'A senha precisa ter pelo menos 6 caracteres.', SENHA_FRACA: 'Senha muito fácil. Escolha outra.', SENHA_ATUAL_ERRADA: 'A senha atual está incorreta.', NAO_PODE_SI_MESMO: 'Você não pode remover o próprio acesso de administrador.', SEM_PERMISSAO: 'Apenas administradores podem fazer isso.', SESSAO_INVALIDA: 'Sua sessão expirou. Entre novamente.', NOME_VAZIO: 'Informe o nome.', PAPEL_INVALIDO: 'Papel inválido.', ASSINATURA_VENCIDA: 'O acesso da escola venceu: os dados ficam só para consulta e exportação até a renovação.', SEM_ESCOLA: 'Esta conta é do painel do dono do sistema. Abra a página /admin/.', USUARIO_EXISTE: 'Esse nome de usuário já existe. Escolha outro.', USUARIO_INVALIDO: 'Usuário: de 3 a 40 letras minúsculas, números, ponto, hífen ou sublinhado, sem espaços.', EMAIL_INVALIDO: 'Informe um e-mail válido.', ESCOLA_VAZIA: 'Informe o nome da escola.', MUITOS_CADASTROS: 'Muitos cadastros feitos agora. Tente de novo mais tarde ou fale com o suporte.', LIMITE_USUARIOS: 'Limite de 50 usuários por escola.', DADOS_GRANDES: 'Os dados ficaram grandes demais para salvar. Fale com o suporte.' };
+const SITE = window.QH_SITE || {};
+const contato = () => [SITE.whatsapp ? `WhatsApp ${E(SITE.whatsapp)}` : '', SITE.email ? `<a href="mailto:${E(SITE.email)}">${E(SITE.email)}</a>` : ''].filter(Boolean).join(' · ');
+const dataBR = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
 const msgErro = e => { const m = String(e && (e.code || e.message) || e); if (/duplicate key|unique/i.test(m)) return 'Esse nome de usuário já existe.'; if (/check constraint.*usuario/i.test(m)) return 'O usuário deve ter de 3 a 40 letras minúsculas, sem espaços.'; if (/Failed to fetch|NetworkError/i.test(m)) return 'Sem conexão com o servidor. Verifique a internet.'; return ERROS[m] || m; };
 async function rpc(fn, args) {
   if (window.QH_MOCK) return window.QH_MOCK(fn, args || {});
@@ -23,6 +26,7 @@ const Auth = {
     const t = Auth.token || Auth.ler();
     if (t) { try { Auth.eu = await rpc('quadro_eu', { p_token: t }); Auth.token = t; } catch (e) { Auth.token = null; Auth.gravar(null); } }
     if (!Auth.token) await Auth.tela();
+    if (Auth.eu.dono) { location.href = '../admin/'; await new Promise(() => { }); }
     if (Auth.eu.trocar_senha) await Auth.trocaObrigatoria();
     Auth.rodape();
   },
@@ -35,16 +39,46 @@ const Auth = {
         <label class="f" style="margin-top:10px">Senha<input type="password" id="lS" autocomplete="current-password" required></label>
         <p id="lMsg" style="color:var(--bad);min-height:20px;margin:10px 0 4px">${E(msg || '')}</p>
         <button class="btn pri" style="width:100%;justify-content:center" id="lBtn">Entrar</button>
-        <p class="hint" style="margin-top:12px">Sem acesso? Peça ao administrador da escola para criar seu usuário.</p></form>`;
+        <p class="hint" style="margin-top:12px">Esqueceu a senha? Peça ao administrador da escola. Se você é o administrador, fale com o suporte${contato() ? ': ' + contato() : ''}.</p>
+        <div class="card" style="margin-top:12px;padding:12px;text-align:center"><b>Sua escola ainda não usa?</b><br><button type="button" class="btn acc" style="margin-top:8px" id="lCriar">Criar conta grátis · ${SITE.teste_dias || 15} dias</button></div></form>`;
       $('lU').focus();
+      $('lCriar').onclick = () => Auth.cadastro(el, res);
       $('fLogin').onsubmit = async ev => {
         ev.preventDefault(); $('lBtn').disabled = true; $('lMsg').textContent = '';
         try {
           const r = await rpc('quadro_login', { p_usuario: $('lU').value.trim(), p_senha: $('lS').value });
+          if (r.dono) { Auth.gravar(r.token); location.href = '../admin/'; return; }
           Auth.token = r.token; Auth.eu = r; Auth.gravar(r.token); el.hidden = true; el.innerHTML = ''; res();
         } catch (e) { $('lMsg').textContent = msgErro(e); $('lBtn').disabled = false; }
       };
+      if (/^#criar/.test(location.hash)) Auth.cadastro(el, res);
     });
+  },
+  cadastro(el, res) {
+    el.innerHTML = `<form class="modal" id="fCad" style="width:min(520px,94vw)"><h2>Criar conta grátis</h2><p class="hint" style="margin:4px 0 12px">${SITE.teste_dias || 15} dias para testar com todos os recursos, sem cartão. Depois, se gostar, é só assinar.</p>
+      <div class="grid" style="gap:10px"><label class="f">Nome da escola<input type="text" id="cE" required maxlength="120"></label>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><label class="f">Seu nome<input type="text" id="cR" required maxlength="120" autocomplete="name"></label><label class="f">Cidade/UF<input type="text" id="cC" maxlength="80" placeholder="ex.: Uberlândia/MG"></label></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><label class="f">E-mail<input type="email" id="cM" required maxlength="160" autocomplete="email"></label><label class="f">WhatsApp<input type="tel" id="cT" maxlength="40" autocomplete="tel" placeholder="(34) 9…"></label></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><label class="f">Usuário para entrar<input type="text" id="cU" required autocapitalize="none" autocomplete="username" placeholder="ex.: maria.silva"></label><label class="f">Senha (mín. 6)<input type="password" id="cS" required autocomplete="new-password"></label></div>
+      <label class="row" style="align-items:flex-start"><input type="checkbox" id="cOk" required> <span class="hint" style="margin:0">Li e aceito os <a href="../termos.html" target="_blank" rel="noopener">termos de uso</a> e a <a href="../privacidade.html" target="_blank" rel="noopener">política de privacidade</a>.</span></label>
+      <input type="text" id="cHp" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true"></div>
+      <p id="cMsg" style="color:var(--bad);min-height:20px;margin:10px 0 4px"></p>
+      <div class="row"><button type="button" class="btn" id="cVolta">Já tenho conta</button><span class="sp"></span><button class="btn pri" id="cBtn">Criar conta e entrar</button></div></form>`;
+    $('cE').focus();
+    $('cVolta').onclick = () => { history.replaceState(null, '', location.pathname); Auth.tela().then(res); };
+    $('fCad').onsubmit = async ev => {
+      ev.preventDefault(); if ($('cHp').value) return;
+      const usu = $('cU').value.trim().toLowerCase();
+      if (!/^[a-z0-9._-]{3,40}$/.test(usu)) return $('cMsg').textContent = ERROS.USUARIO_INVALIDO;
+      $('cBtn').disabled = true; $('cMsg').textContent = '';
+      try {
+        const r = await rpc('quadro_cadastrar_escola', { p_escola: $('cE').value, p_responsavel: $('cR').value, p_email: $('cM').value, p_telefone: $('cT').value, p_cidade: $('cC').value, p_usuario: usu, p_senha: $('cS').value });
+        const nomeEsc = $('cE').value.trim();
+        Auth.token = r.token; Auth.eu = r; Auth.gravar(r.token); el.hidden = true; el.innerHTML = '';
+        S = Store.vazio(); S.config.escola = nomeEsc; UI.boasVindas = true;
+        history.replaceState(null, '', location.pathname + '#painel'); res();
+      } catch (e) { $('cMsg').textContent = msgErro(e); $('cBtn').disabled = false; }
+    };
   },
   trocaObrigatoria() {
     return new Promise(res => {
@@ -75,9 +109,11 @@ const DOCS = ['config', 'professores', 'turmas', 'disciplinas', 'atribs', 'grade
 const P = {
   db: null, dirty: new Set(), timer: null, writing: false, last: {}, ok: true,
   pack(k) { return k === 'grade' ? { grade: S.grade, fixas: S.fixas } : S[k]; },
-  local() { try { localStorage.setItem('quadroHorarios.v1', JSON.stringify(S)); } catch (e) { } },
+  chave() { const id = WEB && Auth.eu?.escola?.id; return 'quadroHorarios.v1' + (id && id !== 1 ? '.e' + id : ''); },
+  somenteLeitura() { return !!(WEB && Auth.eu?.escola && !Auth.eu.escola.liberada); },
+  local() { try { localStorage.setItem(P.chave(), JSON.stringify(S)); } catch (e) { } },
   status(cls, txt) { const s = $('save'); s.className = 'save ' + cls; s.querySelector('span').textContent = txt; },
-  mark(...ks) { ks.forEach(k => P.dirty.add(k)); P.local(); P.status('pend', 'Alterações não salvas…'); clearTimeout(P.timer); P.timer = setTimeout(P.flush, 700); },
+  mark(...ks) { ks.forEach(k => P.dirty.add(k)); P.local(); if (P.somenteLeitura()) { P.status('err', 'Somente leitura — acesso vencido'); return; } P.status('pend', 'Alterações não salvas…'); clearTimeout(P.timer); P.timer = setTimeout(P.flush, 700); },
   async flush() {
     if (P.writing) { P.timer = setTimeout(P.flush, 400); return; }
     if (WEB) return P.flushWeb();
@@ -107,6 +143,7 @@ const P = {
       P.status('', 'Tudo salvo · ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       const m = msgErro(e);
+      if (/ASSINATURA_VENCIDA/.test(e.code || e.message)) { P.writing = false; if (Auth.eu?.escola) Auth.eu.escola.liberada = false; P.status('err', 'Somente leitura — acesso vencido'); render(); toast(m, 7000); return; }
       if (/SESSAO_INVALIDA/.test(e.code || e.message)) { P.writing = false; P.status('err', 'Sessão expirada'); Auth.token = null; Auth.gravar(null); await Auth.tela(ERROS.SESSAO_INVALIDA); Auth.rodape(); P.timer = setTimeout(P.flush, 100); return; }
       P.status('err', 'Não salvou no servidor — guardado neste navegador'); toast('Não consegui salvar no servidor: ' + m + ' Vou tentar de novo.', 5000);
       P.writing = false; clearTimeout(P.timer); P.timer = setTimeout(P.flush, 8000); return;
@@ -117,6 +154,8 @@ const P = {
   async loadWeb(local) {
     P.status('pend', 'Conectando ao servidor…');
     await Auth.garantir();
+    try { local = JSON.parse(localStorage.getItem(P.chave()) || 'null'); } catch (e) { local = null; }
+    if (UI.boasVindas) local = null;
     try {
       const got = await rpc('quadro_ler', { p_token: Auth.token });
       if (got && Object.keys(got).length) {
@@ -125,9 +164,12 @@ const P = {
         S = base; const ult = Object.values(got).map(x => x.em).sort().pop(), por = Object.values(got).find(x => x.em === ult)?.por;
         P.status('', 'Dados do servidor' + (por ? ' · última alteração: ' + por : ''));
       } else if (local && local.turmas && local.turmas.length) { S = local; P.mark(...DOCS); }
+      else if (UI.boasVindas) { P.mark('config'); }
       else P.status('', 'Servidor conectado');
     } catch (e) { if (local) S = local; P.status('err', 'Servidor indisponível — usando este navegador'); toast(msgErro(e), 5000); }
+    if (P.somenteLeitura()) P.status('err', 'Somente leitura — acesso vencido');
     normaliza();
+    if (!S.config.escola && Auth.eu?.escola?.nome) S.config.escola = Auth.eu.escola.nome;
   },
   async load() {
     let local = null; try { local = JSON.parse(localStorage.getItem('quadroHorarios.v1') || 'null'); } catch (e) { }
@@ -239,10 +281,26 @@ const txtIntervalo = iv => `${iv.nome} · ${iv.ini}–${iv.fim}`;
 
 /* ---------------- roteamento ---------------- */
 const VIEWS = {};
+function avisoConta() {
+  const e = WEB && Auth.eu?.escola; if (!e) return '';
+  const adm = Auth.eu.papel === 'admin', bot = adm ? ' <a href="#ajustes" data-act="verAssinatura">Ver como assinar</a>' : ' Avise o administrador da escola.';
+  const st = 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-radius:12px;margin-bottom:14px;font-size:14px;';
+  if (!e.liberada) return `<div role="alert" style="${st}background:color-mix(in srgb,var(--bad) 12%,var(--panel));border:1px solid var(--bad)"><b>${e.bloqueada ? 'Acesso suspenso.' : e.em_teste ? 'O teste grátis terminou.' : 'A assinatura venceu em ' + dataBR(e.valido_ate) + '.'}</b> Os dados continuam aqui para consulta, impressão e exportação, mas as alterações não são salvas.${bot}</div>`;
+  if (e.em_teste) return `<div style="${st}background:color-mix(in srgb,var(--warn) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 50%,var(--line))"><b>Teste grátis:</b> ${e.dias === 0 ? 'último dia' : e.dias === 1 ? 'falta 1 dia' : 'faltam ' + e.dias + ' dias'} (até ${dataBR(e.valido_ate)}).${bot}</div>`;
+  if (e.dias <= 7) return `<div style="${st}background:color-mix(in srgb,var(--warn) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 50%,var(--line))"><b>A assinatura vence em ${dataBR(e.valido_ate)}</b> (${e.dias === 0 ? 'hoje' : e.dias === 1 ? 'amanhã' : 'em ' + e.dias + ' dias'}).${bot}</div>`;
+  return '';
+}
+function cardAssinatura() {
+  const e = WEB && Auth.eu?.escola; if (!e || Auth.eu.papel !== 'admin') return '';
+  const sit = !e.liberada ? `<span class="tag bad">${e.bloqueada ? 'suspensa' : 'vencida'}</span>` : e.em_teste ? '<span class="tag warn">teste grátis</span>' : '<span class="tag ok">ativa</span>';
+  return `<div class="card grid" id="assinatura"><h2>Assinatura</h2><p style="margin:0">Situação: ${sit}${e.valido_ate && e.valido_ate < '2090' ? ` · ${e.liberada ? 'válida até' : 'venceu em'} <b>${dataBR(e.valido_ate)}</b>` : ''}</p>
+   <p class="hint" style="margin:0">Planos: <b>${E(SITE.preco_mensal || '')}/mês</b>${SITE.preco_anual ? ` ou <b>${E(SITE.preco_anual)}/ano</b>` : ''} por escola, com todos os recursos e usuários ilimitados (até 50).</p>
+   <p class="hint" style="margin:0">Para assinar ou renovar, fale com ${E(SITE.responsavel || 'o suporte')}${contato() ? ': ' + contato() : ''}. O pagamento é por Pix ou boleto; a liberação é feita no mesmo dia, sem perder nada do que já foi feito.</p></div>`;
+}
 function render() {
   const h = (location.hash || '#painel').slice(1); ROUTE = VIEWS[h] ? h : 'painel';
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === ROUTE));
-  $('main').innerHTML = VIEWS[ROUTE]();
+  $('main').innerHTML = avisoConta() + VIEWS[ROUTE]();
   (VIEWS[ROUTE].after || (() => { }))();
   $('side').classList.remove('open'); $('mob').setAttribute('aria-expanded', 'false');
 }
@@ -887,9 +945,10 @@ VIEWS.ajustes = () => {
    <label class="row"><input type="checkbox" id="cEFN" ${c.efNoturnoFora !== false ? 'checked' : ''}> Educação Física não tem horário nas turmas do noturno (vale para as próximas importações)</label>
    <label class="row"><input type="checkbox" id="cDupla" ${c.prefs.permitirDupla !== false ? 'checked' : ''}> Permitir aula dupla (duas seguidas da mesma disciplina)</label>
    <p class="hint">Regras obrigatórias (sempre respeitadas): professor em uma turma por vez, disponibilidade do professor, quantidade de aulas de cada disciplina, aulas por dia da turma. As preferências acima e “evitar janelas” entram como penalidade.</p></div>
+  ${cardAssinatura()}
   ${WEB ? `<div class="card grid"><h2>Minha senha</h2><p class="hint">Conectado como <b>${E(Auth.eu?.nome)}</b> (${E(Auth.eu?.usuario)}).</p><div class="row"><button class="btn" data-act="minhaSenha">Trocar minha senha</button></div></div>` : ''}
   ${WEB && Auth.eu?.papel === 'admin' ? `<div class="card grid" style="grid-column:1/-1"><div class="row"><h2>Usuários com acesso</h2><span class="sp"></span><button class="btn pri sm" data-act="editUsu">Novo usuário</button></div><p class="hint">Cada pessoa entra com usuário e senha. No primeiro acesso, o sistema pede para ela criar a própria senha. Administradores também gerenciam usuários.</p><div id="listaUsu" class="muted">Carregando…</div></div>` : ''}
-  <div class="card grid"><h2>Dados</h2><p class="hint">${WEB ? 'Os dados ficam no servidor da escola (Supabase) e aparecem para todos os usuários, em qualquer computador ou celular.' : P.db ? 'Os dados ficam no banco de dados desta página e aparecem em qualquer dispositivo em que você abrir este link.' : 'Banco de dados indisponível nesta visualização: os dados ficam salvos só neste navegador. Faça backups.'}</p>
+  <div class="card grid"><h2>Dados</h2><p class="hint">${WEB ? 'Os dados da escola ficam guardados no servidor e aparecem para todos os usuários da escola, em qualquer computador ou celular. Baixe um backup de vez em quando.' : P.db ? 'Os dados ficam no banco de dados desta página e aparecem em qualquer dispositivo em que você abrir este link.' : 'Banco de dados indisponível nesta visualização: os dados ficam salvos só neste navegador. Faça backups.'}</p>
    <div class="row"><button class="btn" data-act="backup">Baixar backup (.json)</button><button class="btn" data-act="escolherArq">Restaurar backup</button><button class="btn danger" data-act="apagaTudo">Apagar todos os dados</button></div></div>
   </div>`;
 };
@@ -925,6 +984,7 @@ ACT.minhaSenha = () => {
   modal(`<h2>Trocar minha senha</h2><form id="fMinha" class="grid" style="margin-top:12px"><label class="f">Senha atual<input type="password" id="mA" required></label><label class="f">Nova senha<input type="password" id="mN" required></label><label class="f">Repita a nova senha<input type="password" id="mR" required></label><p id="mMsg" style="color:var(--bad);min-height:20px;margin:0"></p><div class="row" style="justify-content:flex-end"><button type="button" class="btn" data-x>Cancelar</button><button class="btn pri">Salvar</button></div></form>`);
   $('fMinha').onsubmit = async ev => { ev.preventDefault(); if ($('mN').value !== $('mR').value) return $('mMsg').textContent = 'As senhas não conferem.'; try { await rpc('quadro_trocar_senha', { p_token: Auth.token, p_atual: $('mA').value, p_nova: $('mN').value }); fecha(); toast('Senha alterada.'); } catch (e) { $('mMsg').textContent = msgErro(e); } };
 };
+ACT.verAssinatura = () => setTimeout(() => $('assinatura')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
 ACT.salvaCfg = () => {
   const c = S.config, dias = [...document.querySelectorAll('.cDia:checked')].map(x => x.value);
   if (!dias.length) return toast('Escolha pelo menos um dia letivo.');
@@ -941,5 +1001,5 @@ ACT.apagaTudo = () => confirma('Apagar professores, turmas, disciplinas, atribui
 
 /* ---------------- início ---------------- */
 if (window.__TEST) window.__T = { gerarPDF, gerarXLS, relDados, get S() { return S; } };
-(async () => { await P.load(); recalc(); render(); if (UI.migrou) { P.mark(...DOCS); toast(`As atividades complementares (${UI.migrou} disciplinas) saíram da grade. Gere o horário de novo.`, 7000); } if (UI.migrouEF) { P.mark(...DOCS); toast(`Educação Física saiu do noturno (${UI.migrouEF} turmas). Ela não tem horário nas turmas da noite.`, 7000); } })();
+(async () => { await P.load(); recalc(); render(); if (UI.boasVindas) toast('Conta criada! Comece importando o quadro de distribuição de aulas ou cadastrando as turmas.', 7000); if (UI.migrou) { P.mark(...DOCS); toast(`As atividades complementares (${UI.migrou} disciplinas) saíram da grade. Gere o horário de novo.`, 7000); } if (UI.migrouEF) { P.mark(...DOCS); toast(`Educação Física saiu do noturno (${UI.migrouEF} turmas). Ela não tem horário nas turmas da noite.`, 7000); } })();
 }
