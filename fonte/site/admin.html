@@ -7,7 +7,7 @@
 <title>Painel do dono · Quadro de Horários</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../estilo.css">
+<link rel="stylesheet" href="estilo.css">
 <style>
 body{font-size:15px}
 main.w{padding-top:26px;padding-bottom:60px}
@@ -46,7 +46,7 @@ button.btn{cursor:pointer;font:inherit;font-weight:700}
 (() => {
 const WEB = window.QH_SUPA, $ = id => document.getElementById(id);
 const E = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const ERROS = { LOGIN_INVALIDO: 'Usuário ou senha incorretos.', MUITAS_TENTATIVAS: 'Muitas tentativas. Aguarde 15 minutos.', SESSAO_INVALIDA: 'Sessão expirada. Entre de novo.', SEM_PERMISSAO: 'Esta conta não é do dono do sistema.', SENHA_CURTA: 'A senha precisa ter pelo menos 6 caracteres.', SENHA_FRACA: 'Senha muito fácil.', SENHA_ATUAL_ERRADA: 'A senha atual está incorreta.', USUARIO_NAO_ENCONTRADO: 'Usuário não encontrado.', CONFIRMACAO_ERRADA: 'O nome digitado não confere com o da escola.' };
+const ERROS = { LOGIN_INVALIDO: 'Usuário ou senha incorretos.', MUITAS_TENTATIVAS: 'Muitas tentativas. Aguarde 15 minutos.', SESSAO_INVALIDA: 'Sessão expirada. Entre de novo.', SEM_PERMISSAO: 'Esta conta não é do dono do sistema.', SENHA_CURTA: 'A senha precisa ter pelo menos 6 caracteres.', SENHA_FRACA: 'Senha muito fácil.', SENHA_ATUAL_ERRADA: 'A senha atual está incorreta.', USUARIO_NAO_ENCONTRADO: 'Usuário não encontrado.', CONFIRMACAO_ERRADA: 'O nome digitado não confere com o da escola.', ESCOLA_VAZIA: 'Informe o nome da escola.', USUARIO_INVALIDO: 'Usuário: de 3 a 40 letras minúsculas, números, ponto, hífen ou sublinhado.', USUARIO_EXISTE: 'Esse usuário já existe. Escolha outro.', DATA_INVALIDA: 'Escolha uma data a partir de hoje.' };
 const msg = e => { const m = String(e && (e.code || e.message) || e); return ERROS[m] || (/Failed to fetch/.test(m) ? 'Sem conexão com o servidor.' : m); };
 async function rpc(fn, args) {
   const r = await fetch(WEB.url + '/rest/v1/rpc/' + fn, { method: 'POST', headers: { apikey: WEB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(args || {}) });
@@ -66,7 +66,7 @@ const br = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—
 const quando = d => { if (!d) return '—'; const dias = Math.floor((Date.now() - new Date(d)) / 864e5); return dias <= 0 ? 'hoje' : dias === 1 ? 'ontem' : 'há ' + dias + ' dias'; };
 const somaMes = (iso, n) => { const d = new Date(iso + 'T12:00:00'); const dia = d.getDate(); d.setMonth(d.getMonth() + n); if (d.getDate() < dia) d.setDate(0); return d.toISOString().slice(0, 10); };
 const senhaNova = () => { const a = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'; const r = crypto.getRandomValues(new Uint32Array(10)); return [...r].map(x => a[x % a.length]).join(''); };
-const situacao = e => e.bloqueada ? ['suspensa', 'bad'] : !e.liberada ? [e.em_teste ? 'teste vencido' : 'vencida', 'bad'] : e.em_teste ? ['teste', 'warn'] : e.dias <= 7 ? ['vence logo', 'warn'] : ['ativa', 'ok'];
+const situacao = e => e.bloqueada ? ['suspensa', 'bad'] : !e.liberada ? ['vencida', 'bad'] : e.dias <= 7 ? ['vence logo', 'warn'] : ['liberada', 'ok'];
 
 function login(aviso) {
   $('quem').textContent = ''; $('sair').hidden = true;
@@ -96,7 +96,7 @@ function trocaSenha() {
 async function inicio() {
   if (!token) return login();
   try { eu = await rpc('quadro_eu', { p_token: token }); } catch (e) { token = null; grava(null); return login(); }
-  if (!eu.dono) { $('main').innerHTML = `<div class="doc" style="max-width:520px"><h1 style="font-size:24px">Sem acesso</h1><p>Você está conectado como <b>${E(eu.usuario)}</b>, que é usuário de uma escola. <a href="../app/">Abrir o sistema da escola</a> ou <a href="#" id="outra">entrar com outra conta</a>.</p></div>`; $('outra').onclick = ev => { ev.preventDefault(); token = null; grava(null); login(); }; return; }
+  if (!eu.dono) { $('main').innerHTML = `<div class="doc" style="max-width:520px"><h1 style="font-size:24px">Sem acesso</h1><p>Você está conectado como <b>${E(eu.usuario)}</b>, que é usuário de uma escola. <a href="../">Abrir o sistema da escola</a> ou <a href="#" id="outra">entrar com outra conta</a>.</p></div>`; $('outra').onclick = ev => { ev.preventDefault(); token = null; grava(null); login(); }; return; }
   $('quem').textContent = eu.nome; $('sair').hidden = false;
   if (eu.trocar_senha) return trocaSenha();
   await carrega();
@@ -109,21 +109,21 @@ async function carrega() {
 }
 function tela() {
   const n = s => ESC.filter(e => situacao(e)[0] === s || (s === 'vencida' && /vencid|suspensa/.test(situacao(e)[0]))).length;
-  const novas30 = ESC.filter(e => Date.now() - new Date(e.criado_em) < 30 * 864e5).length;
   const q = filtro.q.toLowerCase();
   const lista = ESC.filter(e => (!q || [e.nome, e.cidade, e.responsavel, e.email, e.telefone, ...(e.admins || [])].join(' ').toLowerCase().includes(q)) && (!filtro.s || (filtro.s === 'vencida' ? /vencid|suspensa/.test(situacao(e)[0]) : situacao(e)[0] === filtro.s)));
   const wa = t => { const d = String(t || '').replace(/\D/g, ''); return d.length >= 10 ? `<a href="https://wa.me/${d.length <= 11 ? '55' + d : d}" target="_blank" rel="noopener">${E(t)}</a>` : E(t || ''); };
-  $('main').innerHTML = `<div class="row"><h1 style="font-size:28px">Escolas</h1><span class="sp"></span><button class="btn out sm" id="rec">Atualizar</button></div>
-  <div class="kpis"><div class="kpi"><small>Escolas</small><b>${ESC.length}</b></div><div class="kpi"><small>Assinantes ativas</small><b>${n('ativa') + n('vence logo')}</b></div><div class="kpi"><small>Em teste</small><b>${n('teste')}</b></div><div class="kpi"><small>Vencidas ou suspensas</small><b>${n('vencida')}</b></div><div class="kpi"><small>Cadastros nos últimos 30 dias</small><b>${novas30}</b></div></div>
-  <div class="barra"><input id="q" placeholder="Buscar escola, cidade, responsável…" value="${E(filtro.q)}" style="flex:1;min-width:220px"><select id="fs"><option value="">Todas as situações</option>${['teste', 'ativa', 'vence logo', 'vencida'].map(s => `<option ${filtro.s === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
-  <div class="tbl"><table><thead><tr><th>Escola</th><th>Responsável</th><th>Situação</th><th>Válida até</th><th>Uso</th><th>Cadastro</th><th></th></tr></thead><tbody>
-  ${lista.map(e => { const [s, c] = situacao(e); return `<tr><td><b>${E(e.nome)}</b><br><span class="mut">${E(e.cidade || '')}${e.plano ? ' · plano ' + E(e.plano) : ''}</span>${e.obs ? `<br><span class="mut" style="font-size:13px">${E(e.obs)}</span>` : ''}</td>
+  $('main').innerHTML = `<div class="row"><h1 style="font-size:28px">Escolas</h1><span class="sp"></span><button class="btn out sm" id="rec">Atualizar</button><button class="btn acc sm" id="nova">Nova escola</button></div>
+  <div class="kpis"><div class="kpi"><small>Escolas</small><b>${ESC.length}</b></div><div class="kpi"><small>Liberadas</small><b>${n('liberada') + n('vence logo')}</b></div><div class="kpi"><small>Vencem em até 7 dias</small><b>${n('vence logo')}</b></div><div class="kpi"><small>Vencidas ou suspensas</small><b>${n('vencida')}</b></div></div>
+  <div class="barra"><input id="q" placeholder="Buscar escola, cidade, responsável…" value="${E(filtro.q)}" style="flex:1;min-width:220px"><select id="fs"><option value="">Todas as situações</option>${['liberada', 'vence logo', 'vencida'].map(s => `<option ${filtro.s === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+  <div class="tbl"><table><thead><tr><th>Escola</th><th>Responsável</th><th>Situação</th><th>Liberada até</th><th>Uso</th><th>Cadastro</th><th></th></tr></thead><tbody>
+  ${lista.map(e => { const [s, c] = situacao(e); return `<tr><td><b>${E(e.nome)}</b><br><span class="mut">${E(e.cidade || '')}</span>${e.obs ? `<br><span class="mut" style="font-size:13px">${E(e.obs)}</span>` : ''}</td>
    <td>${E(e.responsavel || '—')}<br>${e.email ? `<a href="mailto:${E(e.email)}">${E(e.email)}</a>` : ''}${e.telefone ? '<br>' + wa(e.telefone) : ''}<br><span class="mut">admin: ${E((e.admins || []).join(', ') || '—')}</span></td>
    <td><span class="tag ${c}">${s}</span></td><td>${e.valido_ate && e.valido_ate < '2090' ? br(e.valido_ate) + `<br><span class="mut">${e.dias >= 0 ? (e.dias === 0 ? 'hoje' : 'faltam ' + e.dias + ' d') : 'há ' + -e.dias + ' d'}</span>` : e.valido_ate ? 'sem vencimento' : '—'}</td>
    <td>${e.turmas ?? 0} turmas · ${e.professores ?? 0} prof.<br><span class="mut">${e.usuarios} usuário(s) · último acesso ${quando(e.ultimo_acesso)}</span></td>
    <td>${br(e.criado_em)}</td><td><button class="btn pri sm" data-id="${e.id}">Gerenciar</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="mut">Nenhuma escola.</td></tr>'}
   </tbody></table></div>`;
   $('rec').onclick = carrega;
+  $('nova').onclick = nova;
   $('q').oninput = ev => { filtro.q = ev.target.value; const p = ev.target.selectionStart; tela(); $('q').focus(); $('q').setSelectionRange(p, p); };
   $('fs').onchange = ev => { filtro.s = ev.target.value; tela(); };
   $('main').querySelectorAll('[data-id]').forEach(b => b.onclick = () => gerencia(ESC.find(e => String(e.id) === b.dataset.id)));
@@ -131,29 +131,45 @@ function tela() {
 function gerencia(e) {
   const base = e.pago_ate && e.pago_ate >= hoje() ? e.pago_ate : hoje();
   abre(`<div class="row"><h2>${E(e.nome)}</h2><span class="sp"></span><button class="btn out sm" data-x>Fechar</button></div>
-  <p class="mut" style="margin:2px 0 0">Situação: <b>${situacao(e)[0]}</b>${e.valido_ate && e.valido_ate < '2090' ? ' · válida até ' + br(e.valido_ate) : ''}</p>
-  <div class="sec"><b>Registrar pagamento</b><p class="mut" style="margin:0">Soma a partir de ${br(base)} (o vencimento atual, ou hoje se já venceu).</p>
+  <p class="mut" style="margin:2px 0 0">Situação: <b>${situacao(e)[0]}</b>${e.valido_ate && e.valido_ate < '2090' ? ' · liberada até ' + br(e.valido_ate) : ''}</p>
+  <div class="sec"><b>Liberar acesso</b><p class="mut" style="margin:0">Soma a partir de ${br(base)} (o vencimento atual, ou hoje se já venceu).</p>
    <div class="row"><button class="btn acc sm" id="m1">+ 1 mês (até ${br(somaMes(base, 1))})</button><button class="btn acc sm" id="m12">+ 1 ano (até ${br(somaMes(base, 12))})</button></div></div>
   <div class="sec"><b>Ajustes</b>
-   <div class="g2"><label class="f">Pago até<input type="date" id="pg" value="${E(e.pago_ate || '')}"></label><label class="f">Teste até<input type="date" id="te" value="${E(e.teste_ate || '')}"></label></div>
-   <div class="g2"><label class="f">Plano<select id="pl"><option value="">—</option>${['mensal', 'anual', 'cortesia'].map(p => `<option ${e.plano === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label><label class="f" style="align-self:end;font-weight:500"><span class="row"><input type="checkbox" id="bl" ${e.bloqueada ? 'checked' : ''} style="min-height:0"> Suspender acesso</span></label></div>
+   <div class="g2"><label class="f">Liberada até<input type="date" id="pg" value="${E(e.pago_ate || '')}"></label><label class="f" style="align-self:end;font-weight:500"><span class="row"><input type="checkbox" id="bl" ${e.bloqueada ? 'checked' : ''} style="min-height:0"> Suspender acesso (ninguém da escola entra)</span></label></div>
    <label class="f">Observações (só você vê)<textarea id="ob" rows="2">${E(e.obs || '')}</textarea></label>
-   <div class="row"><button class="btn out sm" id="t7">Estender teste + 7 dias</button><span class="sp"></span><button class="btn pri sm" id="sv">Salvar ajustes</button></div></div>
+   <div class="row"><span class="sp"></span><button class="btn pri sm" id="sv">Salvar ajustes</button></div></div>
   <div class="sec"><b>Senha do administrador</b><p class="mut" style="margin:0">Gera uma senha provisória; no próximo acesso a pessoa cria a própria.</p>
    <div class="row"><select id="ad">${(e.admins || []).map(a => `<option>${E(a)}</option>`).join('')}</select><button class="btn out sm" id="rs" ${(e.admins || []).length ? '' : 'disabled'}>Gerar senha provisória</button></div><p id="rsOut" style="margin:0"></p></div>
   <div class="sec"><b class="bad">Excluir escola</b><p class="mut" style="margin:0">Apaga a escola, os usuários e todos os dados. Não tem volta. Digite o nome exato da escola para confirmar.</p>
    <div class="row"><input id="cf" placeholder="${E(e.nome)}" style="flex:1"><button class="btn sm" style="background:#c53030;color:#fff" id="ex">Excluir</button></div></div>
   <p class="msg" id="gm"></p>`);
   const salva = async (pago, teste, extra) => {
-    try { await rpc('quadro_dono_salvar_escola', { p_token: token, p_id: e.id, p_pago_ate: pago || null, p_teste_ate: teste || null, p_bloqueada: $('bl').checked, p_plano: extra?.plano ?? $('pl').value, p_obs: $('ob').value }); fecha(); toast('Escola atualizada.'); carrega(); }
+    try { await rpc('quadro_dono_salvar_escola', { p_token: token, p_id: e.id, p_pago_ate: pago || null, p_teste_ate: teste || null, p_bloqueada: $('bl').checked, p_plano: null, p_obs: $('ob').value }); fecha(); toast('Escola atualizada.'); carrega(); }
     catch (er) { $('gm').textContent = msg(er); }
   };
-  $('m1').onclick = () => salva(somaMes(base, 1), e.teste_ate, { plano: 'mensal' });
-  $('m12').onclick = () => salva(somaMes(base, 12), e.teste_ate, { plano: 'anual' });
-  $('t7').onclick = () => { const b = e.teste_ate && e.teste_ate >= hoje() ? e.teste_ate : hoje(); const d = new Date(b + 'T12:00:00'); d.setDate(d.getDate() + 7); salva($('pg').value, d.toISOString().slice(0, 10)); };
-  $('sv').onclick = () => salva($('pg').value, $('te').value);
+  $('m1').onclick = () => salva(somaMes(base, 1), e.teste_ate);
+  $('m12').onclick = () => salva(somaMes(base, 12), e.teste_ate);
+  $('sv').onclick = () => salva($('pg').value, e.teste_ate);
   $('rs').onclick = async () => { const s = senhaNova(), u = $('ad').value; try { await rpc('quadro_dono_redefinir_senha', { p_token: token, p_usuario: u, p_senha: s }); $('rsOut').innerHTML = `Usuário <b>${E(u)}</b> · senha provisória <b style="font-family:monospace;font-size:16px">${s}</b>`; } catch (er) { $('gm').textContent = msg(er); } };
   $('ex').onclick = async () => { if ($('cf').value !== e.nome) return $('gm').textContent = ERROS.CONFIRMACAO_ERRADA; try { await rpc('quadro_dono_excluir_escola', { p_token: token, p_id: e.id, p_confirma: $('cf').value }); fecha(); toast('Escola excluída.'); carrega(); } catch (er) { $('gm').textContent = msg(er); } };
+}
+function nova() {
+  const s = senhaNova();
+  abre(`<div class="row"><h2>Nova escola</h2><span class="sp"></span><button class="btn out sm" data-x>Fechar</button></div>
+  <form id="fN" style="display:grid;gap:10px;margin-top:12px"><label class="f">Nome da escola<input id="nN" required maxlength="120"></label>
+   <div class="g2"><label class="f">Responsável<input id="nR" maxlength="120"></label><label class="f">Cidade/UF<input id="nC" maxlength="80"></label></div>
+   <div class="g2"><label class="f">E-mail<input id="nM" type="email" maxlength="160"></label><label class="f">WhatsApp<input id="nT" maxlength="40"></label></div>
+   <div class="g2"><label class="f">Usuário do administrador<input id="nU" required autocapitalize="none" placeholder="ex.: coordenacao.escola"></label><label class="f">Senha provisória<input id="nS" required value="${s}" style="font-family:monospace"></label></div>
+   <label class="f">Liberada até<input id="nD" type="date" required value="${somaMes(hoje(), 1)}" min="${hoje()}"></label>
+   <p class="mut" style="margin:0">Passe o usuário e a senha provisória para a escola. No primeiro acesso, o sistema pede para criar a própria senha.</p>
+   <p class="msg" id="nMsg"></p><div class="row"><span class="sp"></span><button class="btn acc">Criar escola</button></div></form>`);
+  $('fN').onsubmit = async ev => {
+    ev.preventDefault(); $('nMsg').textContent = '';
+    try { await rpc('quadro_dono_criar_escola', { p_token: token, p_nome: $('nN').value, p_responsavel: $('nR').value, p_email: $('nM').value, p_telefone: $('nT').value, p_cidade: $('nC').value, p_usuario: $('nU').value.trim().toLowerCase(), p_senha: $('nS').value, p_liberada_ate: $('nD').value });
+      $('box').innerHTML = `<h2>Escola criada</h2><p>Envie para a escola:</p><p style="background:#f3f5f9;border-radius:10px;padding:12px">Endereço: <b>${E(location.origin + location.pathname.replace(/admin\/?$/, ''))}</b><br>Usuário: <b>${E($('nU').value.trim().toLowerCase())}</b><br>Senha provisória: <b style="font-family:monospace">${E($('nS').value)}</b></p><div class="row"><span class="sp"></span><button class="btn pri" data-x>OK</button></div>`;
+      carrega(); }
+    catch (er) { $('nMsg').textContent = msg(er); }
+  };
 }
 inicio();
 })();
