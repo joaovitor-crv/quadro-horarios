@@ -2,7 +2,7 @@
 
 Sistema online para escolas montarem o horário das aulas: importa o quadro de distribuição de aulas (Excel), confere professores, turmas e quantidades, gera o horário automaticamente, permite ajustar arrastando as aulas, aponta conflitos e exporta em PDF e Excel.
 
-Vendido por escola, com teste grátis de 15 dias e cobrança manual (Pix ou boleto).
+Vendido por escola, com teste grátis de 15 dias. Valores e pagamento são combinados direto com cada escola (o site não mostra preços).
 
 ## O que tem no site (pasta `site/`)
 | Endereço | O que é |
@@ -15,10 +15,10 @@ Vendido por escola, com teste grátis de 15 dias e cobrança manual (Pix ou bole
 ## Como funciona a venda
 1. A escola cria a conta em `/app/#criar` (ou pelo botão "Testar grátis"). Quem cria vira o administrador da escola e cadastra a equipe em **Configurações → Usuários com acesso**.
 2. O teste dura 15 dias. O sistema mostra quantos dias faltam e, em **Configurações → Assinatura**, como assinar.
-3. A escola paga por Pix ou boleto direto ao dono. No `/admin/`, o dono clica em **Gerenciar → + 1 mês** ou **+ 1 ano**.
+3. Valor e pagamento são combinados direto com o dono. No `/admin/`, o dono clica em **Gerenciar → + 1 mês** ou **+ 1 ano**.
 4. Se vencer, a escola continua vendo, imprimindo e exportando, mas não salva alterações até renovar.
 
-Preço, contato e dias de teste ficam em `fonte/site.json`. O número de dias do teste criado no banco está na função `quadro_cadastrar_escola` (`current_date + 15`).
+Contato e dias de teste ficam em `fonte/site.json`. O número de dias do teste criado no banco está na função `quadro_cadastrar_escola` (`current_date + 15`).
 
 ## Banco de dados (Supabase)
 - Cada escola tem os dados separados (`quadro_escolas`, `quadro_docs.escola_id`, `quadro_usuarios.escola_id`).

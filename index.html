@@ -197,7 +197,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 <div class="ov center" id="ovm" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" hidden></div>
 <input type="file" id="fileIn" accept=".xlsx,.xlsm,.csv,.json,.txt" hidden>
-<script>window.QH_SUPA={"url": "https://xafbnwjxypdzizntkboh.supabase.co", "key": "sb_publishable_PQhSXGWpCE77hQ32vwUIDg_ThiBaZPw"};window.QH_SITE={"nome": "Quadro de Horários", "preco_mensal": "R$ 49,90", "preco_anual": "R$ 499,00", "teste_dias": 15, "email": "jvitoradm19@gmail.com", "whatsapp": "", "responsavel": "João Vitor"};</script>
+<script>window.QH_SUPA={"url": "https://xafbnwjxypdzizntkboh.supabase.co", "key": "sb_publishable_PQhSXGWpCE77hQ32vwUIDg_ThiBaZPw"};window.QH_SITE={"nome": "Quadro de Horários", "teste_dias": 15, "email": "jvitoradm19@gmail.com", "whatsapp": "", "responsavel": "João Vitor"};</script>
 <script>
 /* ===== Núcleo: utilidades, xlsx (ler/escrever), pdf, importação, gerador, validação ===== */
 const U = {
@@ -1217,8 +1217,7 @@ function cardAssinatura() {
   const e = WEB && Auth.eu?.escola; if (!e || Auth.eu.papel !== 'admin') return '';
   const sit = !e.liberada ? `<span class="tag bad">${e.bloqueada ? 'suspensa' : 'vencida'}</span>` : e.em_teste ? '<span class="tag warn">teste grátis</span>' : '<span class="tag ok">ativa</span>';
   return `<div class="card grid" id="assinatura"><h2>Assinatura</h2><p style="margin:0">Situação: ${sit}${e.valido_ate && e.valido_ate < '2090' ? ` · ${e.liberada ? 'válida até' : 'venceu em'} <b>${dataBR(e.valido_ate)}</b>` : ''}</p>
-   <p class="hint" style="margin:0">Planos: <b>${E(SITE.preco_mensal || '')}/mês</b>${SITE.preco_anual ? ` ou <b>${E(SITE.preco_anual)}/ano</b>` : ''} por escola, com todos os recursos e usuários ilimitados (até 50).</p>
-   <p class="hint" style="margin:0">Para assinar ou renovar, fale com ${E(SITE.responsavel || 'o suporte')}${contato() ? ': ' + contato() : ''}. O pagamento é por Pix ou boleto; a liberação é feita no mesmo dia, sem perder nada do que já foi feito.</p></div>`;
+   <p class="hint" style="margin:0">Para assinar ou renovar, fale com ${E(SITE.responsavel || 'o suporte')}${contato() ? ': ' + contato() : ''}. A liberação é feita no mesmo dia, sem perder nada do que já foi feito.</p></div>`;
 }
 function render() {
   const h = (location.hash || '#painel').slice(1); ROUTE = VIEWS[h] ? h : 'painel';

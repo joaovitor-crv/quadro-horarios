@@ -294,8 +294,7 @@ function cardAssinatura() {
   const e = WEB && Auth.eu?.escola; if (!e || Auth.eu.papel !== 'admin') return '';
   const sit = !e.liberada ? `<span class="tag bad">${e.bloqueada ? 'suspensa' : 'vencida'}</span>` : e.em_teste ? '<span class="tag warn">teste grátis</span>' : '<span class="tag ok">ativa</span>';
   return `<div class="card grid" id="assinatura"><h2>Assinatura</h2><p style="margin:0">Situação: ${sit}${e.valido_ate && e.valido_ate < '2090' ? ` · ${e.liberada ? 'válida até' : 'venceu em'} <b>${dataBR(e.valido_ate)}</b>` : ''}</p>
-   <p class="hint" style="margin:0">Planos: <b>${E(SITE.preco_mensal || '')}/mês</b>${SITE.preco_anual ? ` ou <b>${E(SITE.preco_anual)}/ano</b>` : ''} por escola, com todos os recursos e usuários ilimitados (até 50).</p>
-   <p class="hint" style="margin:0">Para assinar ou renovar, fale com ${E(SITE.responsavel || 'o suporte')}${contato() ? ': ' + contato() : ''}. O pagamento é por Pix ou boleto; a liberação é feita no mesmo dia, sem perder nada do que já foi feito.</p></div>`;
+   <p class="hint" style="margin:0">Para assinar ou renovar, fale com ${E(SITE.responsavel || 'o suporte')}${contato() ? ': ' + contato() : ''}. A liberação é feita no mesmo dia, sem perder nada do que já foi feito.</p></div>`;
 }
 function render() {
   const h = (location.hash || '#painel').slice(1); ROUTE = VIEWS[h] ? h : 'painel';

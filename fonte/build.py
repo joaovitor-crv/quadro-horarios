@@ -39,7 +39,7 @@ if cfg.get('whatsapp'):
 hoje = datetime.date.today()
 meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 vals = {
-    'logo': logo, 'preco_mensal': cfg['preco_mensal'], 'preco_anual': cfg['preco_anual'], 'teste_dias': str(cfg['teste_dias']),
+    'logo': logo, 'teste_dias': str(cfg['teste_dias']),
     'responsavel': cfg['responsavel'], 'ano': str(hoje.year), 'atualizado': f'{hoje.day} de {meses[hoje.month - 1]} de {hoje.year}',
     'contato_html': ' · '.join(contato), 'contato_txt': ' ou '.join(re.sub('<[^>]+>', '', c) for c in contato) or 'pelo e-mail do rodapé',
 }
